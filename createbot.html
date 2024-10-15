@@ -67,7 +67,7 @@
         border-radius: 5px;
         word-break: break-all;
         margin-bottom: 1rem;
-        max-height: 280px; // Increased from 200px to 240px (20% taller)
+        max-height: 300px; // Increased from 200px to 240px (20% taller)
         overflow-y: auto;
         font-size: 0.9rem;
       }
@@ -144,6 +144,29 @@
         border: none;
         border-radius: 3px;
         cursor: pointer;
+      }
+      .copy-button:hover {
+        background-color: #45a049;
+      }
+      .key-display p {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        margin-bottom: 15px;
+      }
+      .key-content {
+        word-break: break-all;
+        margin-bottom: 5px;
+      }
+      .copy-button {
+        padding: 5px 10px;
+        font-size: 0.8rem;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        align-self: flex-start;
       }
       .copy-button:hover {
         background-color: #45a049;
@@ -286,8 +309,10 @@
               <div class="content">
                 <div class="key-display">
                   <p>
-                    <strong>Privatekey:</strong> ${this.state.privateKey}
+                    <strong>Privatekey:</strong>
+                    <span class="key-content">${this.state.privateKey}</span>
                     <button
+                      class="copy-button"
                       onClick=${() =>
                         navigator.clipboard.writeText(this.state.privateKey)}
                     >
@@ -295,8 +320,10 @@
                     </button>
                   </p>
                   <p>
-                    <strong>nsec:</strong> ${this.state.nsec}
+                    <strong>nsec:</strong>
+                    <span class="key-content">${this.state.nsec}</span>
                     <button
+                      class="copy-button"
                       onClick=${() =>
                         navigator.clipboard.writeText(this.state.nsec)}
                     >
@@ -304,8 +331,10 @@
                     </button>
                   </p>
                   <p>
-                    <strong>Pubkey:</strong> ${this.state.pubkey}
+                    <strong>Pubkey:</strong>
+                    <span class="key-content">${this.state.pubkey}</span>
                     <button
+                      class="copy-button"
                       onClick=${() =>
                         navigator.clipboard.writeText(this.state.pubkey)}
                     >
