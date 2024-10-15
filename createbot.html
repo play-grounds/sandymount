@@ -168,7 +168,8 @@
             publishStatus: '',
             avatarUrl: '',
             isLoading: false,
-            profileLink: ''
+            profileLink: '',
+            nsec: '' // Add this line
           }
           this.pool = new SimplePool()
         }
@@ -181,7 +182,8 @@
           )
             .map(b => b.toString(16).padStart(2, '0'))
             .join('')
-          this.setState({ privateKey })
+          const nsec = nip19.nsecEncode(privateKey) // Add this line
+          this.setState({ privateKey, nsec }) // Update this line
           await this.generatePublicKey(privateKey)
           this.setState({ isLoading: false })
         }
@@ -275,10 +277,19 @@
               <div class="content">
                 <div class="key-display">
                   <p>
-                    <strong>Private Key:</strong> ${this.state.privateKey}
+                    <strong>Private Key (hex):</strong> ${this.state.privateKey}
                     <button
                       onClick=${() =>
                         navigator.clipboard.writeText(this.state.privateKey)}
+                    >
+                      Copy
+                    </button>
+                  </p>
+                  <p>
+                    <strong>Private Key (nsec):</strong> ${this.state.nsec}
+                    <button
+                      onClick=${() =>
+                        navigator.clipboard.writeText(this.state.nsec)}
                     >
                       Copy
                     </button>
