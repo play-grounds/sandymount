@@ -201,9 +201,79 @@
             avatarUrl: '',
             isLoading: false,
             profileLink: '',
-            nsec: '' // Add this line
+            nsec: '',
+            savedToLocalStorage: false,
+            profiles: []
           }
           this.pool = new SimplePool()
+        }
+
+        componentDidMount() {
+          this.checkStoredPrivateKey()
+          this.loadProfiles()
+        }
+
+        loadProfiles() {
+          const storedProfiles = localStorage.getItem('nostr:profiles')
+          if (storedProfiles) {
+            this.setState({ profiles: JSON.parse(storedProfiles) })
+          }
+        }
+
+        saveProfile() {
+          const { pubkey, name, about, avatarUrl } = this.state
+          const profileId = `nostr:pubkey:${pubkey}`
+          const newProfile = {
+            '@id': profileId,
+            name,
+            about,
+            picture: avatarUrl
+          }
+
+          const updatedProfiles = [...this.state.profiles]
+          const existingProfileIndex = updatedProfiles.findIndex(
+            p => p['@id'] === profileId
+          )
+
+          if (existingProfileIndex !== -1) {
+            updatedProfiles[existingProfileIndex] = newProfile
+          } else {
+            updatedProfiles.push(newProfile)
+          }
+
+          this.setState({ profiles: updatedProfiles }, () => {
+            localStorage.setItem(
+              'nostr:profiles',
+              JSON.stringify(updatedProfiles)
+            )
+          })
+        }
+
+        checkStoredPrivateKey() {
+          const storedPrivateKey = localStorage.getItem('nostr:privkey')
+          if (storedPrivateKey) {
+            this.setState({ privateKey: storedPrivateKey }, () => {
+              this.generatePublicKey(storedPrivateKey)
+              const nsec = nip19.nsecEncode(storedPrivateKey)
+              this.setState({ nsec }, () => {
+                this.loadProfileData()
+              })
+            })
+          }
+        }
+
+        loadProfileData() {
+          const { pubkey, profiles } = this.state
+          const profileId = `nostr:pubkey:${pubkey}`
+          const existingProfile = profiles.find(p => p['@id'] === profileId)
+
+          if (existingProfile) {
+            this.setState({
+              name: existingProfile.name,
+              about: existingProfile.about,
+              avatarUrl: existingProfile.picture
+            })
+          }
         }
 
         async generatePrivateKey() {
@@ -214,8 +284,8 @@
           )
             .map(b => b.toString(16).padStart(2, '0'))
             .join('')
-          const nsec = nip19.nsecEncode(privateKey) // Add this line
-          this.setState({ privateKey, nsec }) // Update this line
+          const nsec = nip19.nsecEncode(privateKey)
+          this.setState({ privateKey, nsec })
           await this.generatePublicKey(privateKey)
           this.setState({ isLoading: false })
         }
@@ -283,6 +353,18 @@
 
         componentWillUnmount() {
           this.pool.close()
+        }
+
+        saveToLocalStorage() {
+          if (this.state.privateKey) {
+            localStorage.setItem('nostr:privkey', this.state.privateKey)
+            this.saveProfile()
+            this.setState({ savedToLocalStorage: true })
+            setTimeout(
+              () => this.setState({ savedToLocalStorage: false }),
+              3000
+            )
+          }
         }
 
         render() {
@@ -405,6 +487,14 @@
               `}
               ${this.state.isLoading &&
               html`<div class="loading-spinner"></div>`}
+              <button
+                onClick=${() => this.saveToLocalStorage()}
+                disabled=${!this.state.privateKey}
+              >
+                Save Profile Locally
+              </button>
+              ${this.state.savedToLocalStorage &&
+              html`<p>Profile saved Locally!</p>`}
             </div>
           `
         }
