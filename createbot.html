@@ -1,0 +1,383 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nostr App</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #ffffff;
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .container {
+        background-color: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        max-width: 600px;
+        width: 100%;
+        overflow-y: auto;
+        max-height: 90vh;
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 2rem;
+        font-size: 2.5rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      button {
+        background-color: #4caf50;
+        border: none;
+        color: white;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 4px 2px;
+        cursor: pointer;
+        border-radius: 5px;
+        transition: background-color 0.3s;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      textarea {
+        width: 100%;
+        padding: 12px 20px;
+        margin: 8px 0;
+        box-sizing: border-box;
+        border: 2px solid #ccc;
+        border-radius: 4px;
+        background-color: #f8f8f8;
+        font-size: 16px;
+        resize: vertical;
+      }
+      .key-display,
+      .event-display {
+        background-color: rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        border-radius: 5px;
+        word-break: break-all;
+        margin-bottom: 1rem;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .event-display {
+        padding: 15px;
+        margin-top: 1rem;
+      }
+      .key-display p,
+      .event-display p {
+        margin: 0 0 15px 0;
+        line-height: 1.4;
+      }
+      .avatar {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        margin: 0 auto 1rem;
+        display: block;
+      }
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        border: 5px solid #4caf50;
+        border-top: 5px solid #45a049;
+        animation: spin 2s linear infinite;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .collapsible {
+        background-color: rgba(0, 0, 0, 0.2);
+        color: white;
+        cursor: pointer;
+        padding: 10px;
+        width: 100%;
+        border: none;
+        text-align: left;
+        outline: none;
+        font-size: 15px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+      }
+      .collapsible:after {
+        content: '\002B';
+        color: white;
+        font-weight: bold;
+        float: right;
+        margin-left: 5px;
+      }
+      .active:after {
+        content: '\2212';
+      }
+      .content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+        background-color: rgba(0, 0, 0, 0.1);
+        border-radius: 0 0 5px 5px;
+        padding: 0 10px;
+      }
+      .copy-button {
+        margin-left: 10px;
+        padding: 2px 5px;
+        font-size: 0.8em;
+        vertical-align: middle;
+      }
+    </style>
+    <script type="module">
+      import {
+        html,
+        render,
+        Component
+      } from 'https://unpkg.com/htm@3.0.4/preact/standalone.module.js'
+      import {
+        SimplePool,
+        getPublicKey,
+        getEventHash,
+        finishEvent,
+        nip19
+      } from 'https://cdn.jsdelivr.net/npm/nostr-tools@1.17.0/+esm'
+
+      class NostrApp extends Component {
+        constructor() {
+          super()
+          this.state = {
+            pubkey: '',
+            name: '',
+            about: '',
+            event: null,
+            eventHash: '',
+            signedEvent: null,
+            privateKey: '',
+            publishStatus: '',
+            avatarUrl: '',
+            isLoading: false,
+            profileLink: ''
+          }
+          this.pool = new SimplePool()
+        }
+
+        async generatePrivateKey() {
+          this.setState({ isLoading: true })
+          // Generate a random 32-byte hex string
+          const privateKey = Array.from(
+            crypto.getRandomValues(new Uint8Array(32))
+          )
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('')
+          this.setState({ privateKey })
+          await this.generatePublicKey(privateKey)
+          this.setState({ isLoading: false })
+        }
+
+        async generatePublicKey(privateKey) {
+          const pubkey = getPublicKey(privateKey)
+          const avatarUrl = `https://robohash.org/${pubkey}.png?size=100x100&set=set3`
+          this.setState({ pubkey, avatarUrl })
+        }
+
+        async createEvent() {
+          const event = {
+            kind: 0,
+            pubkey: this.state.pubkey,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [],
+            content: JSON.stringify({
+              name: this.state.name,
+              about: this.state.about,
+              bot: true
+            })
+          }
+          const signedEvent = finishEvent(event, this.state.privateKey)
+          const eventHash = getEventHash(signedEvent)
+
+          this.setState({ event, eventHash, signedEvent, publishStatus: '' })
+        }
+
+        async publishProfile() {
+          this.setState({ isLoading: true, profileLink: '' })
+          if (!this.state.signedEvent) {
+            this.setState({
+              publishStatus: 'Please create a profile event first.'
+            })
+            return
+          }
+
+          const relays = [
+            'wss://relay.damus.io',
+            'wss://relay.nostr.band',
+            'wss://nos.lol'
+          ]
+          try {
+            const pubs = this.pool.publish(relays, this.state.signedEvent)
+            await Promise.all(pubs)
+            const npub = nip19.npubEncode(this.state.pubkey)
+            const profileLink = `https://nostr.at/${npub}`
+            this.setState({
+              publishStatus: 'Profile published successfully!',
+              profileLink
+            })
+          } catch (error) {
+            console.error('Failed to publish event:', error)
+            this.setState({
+              publishStatus: 'Failed to publish profile. Please try again.'
+            })
+          }
+          this.setState({ isLoading: false })
+        }
+
+        handleInputChange(event, field) {
+          this.setState({ [field]: event.target.value })
+        }
+
+        componentWillUnmount() {
+          this.pool.close()
+        }
+
+        render() {
+          const isFormValid =
+            this.state.name && this.state.about && this.state.privateKey
+
+          return html`
+            <div class="container">
+              <h1>Nostr Bot Profile Creator</h1>
+              <button onClick=${() => this.generatePrivateKey()}>
+                Generate Keys
+              </button>
+              ${this.state.avatarUrl &&
+              html`
+                <img
+                  src=${this.state.avatarUrl}
+                  alt="Bot Avatar"
+                  class="avatar"
+                />
+              `}
+              <button class="collapsible" onClick=${this.toggleCollapsible}>
+                Show Keys
+              </button>
+              <div class="content">
+                <div class="key-display">
+                  <p>
+                    <strong>Private Key:</strong> ${this.state.privateKey}
+                    <button
+                      onClick=${() =>
+                        navigator.clipboard.writeText(this.state.privateKey)}
+                    >
+                      Copy
+                    </button>
+                  </p>
+                  <p>
+                    <strong>Public Key:</strong> ${this.state.pubkey}
+                    <button
+                      onClick=${() =>
+                        navigator.clipboard.writeText(this.state.pubkey)}
+                    >
+                      Copy
+                    </button>
+                  </p>
+                </div>
+              </div>
+
+              <input
+                type="text"
+                placeholder="Bot Name"
+                value=${this.state.name}
+                onInput=${event => this.handleInputChange(event, 'name')}
+                class=${!this.state.name ? 'invalid' : ''}
+              />
+
+              <textarea
+                placeholder="About the bot"
+                value=${this.state.about}
+                onInput=${event => this.handleInputChange(event, 'about')}
+                rows="4"
+                class=${!this.state.about ? 'invalid' : ''}
+              ></textarea>
+
+              <button
+                onClick=${() => this.createEvent()}
+                disabled=${!isFormValid}
+              >
+                Create Profile
+              </button>
+
+              <button
+                onClick=${() => this.publishProfile()}
+                disabled=${!isFormValid || !this.state.signedEvent}
+              >
+                Publish Profile
+              </button>
+
+              ${this.state.publishStatus &&
+              html` <p class="publish-status">${this.state.publishStatus}</p> `}
+              ${this.state.profileLink &&
+              html`
+                <p>
+                  <a
+                    href=${this.state.profileLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View your profile
+                  </a>
+                </p>
+              `}
+              ${this.state.event &&
+              html`
+                <button class="collapsible" onClick=${this.toggleCollapsible}>
+                  Show Profile Event
+                </button>
+                <div class="content">
+                  <div class="event-display">
+                    <p><strong>Hash:</strong> ${this.state.eventHash}</p>
+                    <p>
+                      <strong>Signed Event:</strong> ${JSON.stringify(
+                        this.state.signedEvent
+                      )}
+                    </p>
+                  </div>
+                </div>
+              `}
+              ${this.state.isLoading &&
+              html`<div class="loading-spinner"></div>`}
+            </div>
+          `
+        }
+
+        toggleCollapsible(e) {
+          e.target.classList.toggle('active')
+          var content = e.target.nextElementSibling
+          if (content.style.maxHeight) {
+            content.style.maxHeight = null
+          } else {
+            content.style.maxHeight = content.scrollHeight + 'px'
+          }
+        }
+
+        componentWillUnmount() {
+          this.pool.close()
+        }
+      }
+
+      render(html`<${NostrApp} />`, document.body)
+    </script>
+  </head>
+  <body></body>
+</html>
