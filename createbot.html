@@ -188,7 +188,7 @@
 
         async generatePublicKey(privateKey) {
           const pubkey = getPublicKey(privateKey)
-          const avatarUrl = `https://robohash.org/${pubkey}.png?size=100x100&set=set3`
+          const avatarUrl = `https://api.dicebear.com/9.x/bottts/svg?seed=${pubkey}&size=100`
           this.setState({ pubkey, avatarUrl })
         }
 
