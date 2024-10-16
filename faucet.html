@@ -53,7 +53,7 @@
             } else if (window.nostr) {
               console.log('Using window.nostr.getPublicKey()')
               // Get the public key from the extension
-              publicKey = await window.nostr.getPublicKey()
+              publicKey = '02' + (await window.nostr.getPublicKey())
             } else {
               throw new Error('No private key or Nostr extension found')
             }
