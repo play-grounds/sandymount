@@ -24,33 +24,67 @@
         constructor() {
           super()
           this.state = {
-            loggedIn: !!localStorage.getItem('nostr:privkey'),
-            publicKey: ''
+            loggedIn: false,
+            publicKey: '',
+            taprootAddress: ''
           }
         }
 
         componentDidMount() {
-          if (this.state.loggedIn) {
-            this.generateTaprootAddress()
+          // Check if the user is logged in with the extension
+          if (window.nostr) {
+            this.handleLogin()
           }
         }
 
-        generateTaprootAddress = () => {
+        generateTaprootAddress = async () => {
           try {
-            const privateKey = localStorage.getItem('nostr:privkey')
-            if (!privateKey) {
-              throw new Error('Nostr private key not found in localStorage')
-            }
+            let publicKey
+            console.log('generateTaprootAddress')
 
-            // Convert private key to public key
-            const privateKeyBytes = secp256k1.utils.hexToBytes(privateKey)
-            const publicKey = secp256k1.getPublicKey(privateKeyBytes, true)
+            const privateKey = localStorage.getItem('nostr:privkey')
+            if (privateKey) {
+              console.log('Using private key from localStorage')
+              // Convert private key to public key
+              const privateKeyBytes = secp256k1.utils.hexToBytes(privateKey)
+              publicKey = secp256k1.utils.bytesToHex(
+                secp256k1.getPublicKey(privateKeyBytes, true)
+              )
+            } else if (window.nostr) {
+              console.log('Using window.nostr.getPublicKey()')
+              // Get the public key from the extension
+              publicKey = await window.nostr.getPublicKey()
+            } else {
+              throw new Error('No private key or Nostr extension found')
+            }
+            console.log('publicKey', publicKey)
+
+            // Use the helper function to generate the Taproot address
+            const taprootAddress = this.pubkeyToTaprootAddress(publicKey)
+
+            console.log('Taproot address:', taprootAddress)
+
+            this.setState({ publicKey, taprootAddress })
+          } catch (error) {
+            console.error('Error generating Taproot address:', error)
+            Swal.fire(
+              'Error',
+              'Failed to generate Taproot address: ' + error.message,
+              'error'
+            )
+          }
+        }
+
+        pubkeyToTaprootAddress = pubkey => {
+          try {
+            // Convert hex public key to bytes
+            const pubkeyBytes = secp256k1.utils.hexToBytes(pubkey)
 
             // Convert public key to Bitcoin format (remove the first byte)
-            const bitcoinPubKeyBytes = publicKey.slice(1)
+            const bitcoinPubKeyBytes = pubkeyBytes.slice(1)
 
             // Calculate Taproot address
-            const taproot_prefix = 'tb'
+            const taproot_prefix = 'tb' // Use 'bc' for mainnet
             const scriptVersion = 1
             const words = bech32Library.bech32.toWords(bitcoinPubKeyBytes)
             const taprootWords = [scriptVersion, ...words]
@@ -60,23 +94,38 @@
               1024
             )
 
-            console.log('Taproot address:', taprootAddress)
-
-            this.setState({ publicKey: taprootAddress })
+            return taprootAddress
           } catch (error) {
             console.error('Error generating Taproot address:', error)
-            Swal.fire('Error', 'Failed to generate Taproot address', 'error')
+            throw error
           }
         }
 
-        handleLogin = () => {
-          this.setState({ loggedIn: true }, () => {
-            this.generateTaprootAddress()
-          })
+        handleLogin = async () => {
+          console.log('handleLogin')
+          try {
+            if (window.nostr) {
+              const pubkey = await window.nostr.getPublicKey()
+
+              // Existing login logic for non-extension login
+              this.setState({ loggedIn: true }, () => {
+                this.generateTaprootAddress()
+              })
+              // this.setState({ loggedIn: true, publicKey: pubkey })
+            } else {
+              // Existing login logic for non-extension login
+              this.setState({ loggedIn: true }, () => {
+                this.generateTaprootAddress()
+              })
+            }
+          } catch (error) {
+            console.error('Login error:', error)
+            Swal.fire('Error', 'Failed to log in: ' + error.message, 'error')
+          }
         }
 
         handleLogout = () => {
-          this.setState({ loggedIn: false, publicKey: '' })
+          this.setState({ loggedIn: false, publicKey: '', taprootAddress: '' })
         }
 
         copyToClipboard = publicKey => {
@@ -85,7 +134,7 @@
         }
 
         render() {
-          const { loggedIn, publicKey } = this.state
+          const { loggedIn, publicKey, taprootAddress } = this.state
           return html`
             <div class="app">
               <${Navbar}
@@ -101,14 +150,15 @@
                       <h2>Your Bitcoin Public Key</h2>
                       <p class="public-key">
                         <a
-                          href="https://mempool.space/testnet4/address/${publicKey}"
+                          href="https://mempool.space/testnet4/address/${taprootAddress}"
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          ${publicKey}
+                          ${taprootAddress.slice(0, 32)}...
                         </a>
+                        <br />
                         <button
-                          onClick=${() => this.copyToClipboard(publicKey)}
+                          onClick=${() => this.copyToClipboard(taprootAddress)}
                         >
                           Copy Address
                         </button>
