@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Faucets</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="js/nosdav-shim.js"></script>
+    <script type="module">
+      import {
+        html,
+        render,
+        Component
+      } from 'https://unpkg.com/htm/preact/standalone.module.js'
+      import * as secp256k1 from 'https://cdn.jsdelivr.net/npm/@noble/secp256k1@1.7.1/+esm'
+      import * as bech32Library from 'https://cdn.jsdelivr.net/npm/bech32@2.0.0/+esm'
+      import { Navbar } from './components/Navbar.js'
+
+      // Make secp256k1 and bech32 available globally
+      window.secp256k1 = secp256k1
+      window.bech32 = bech32Library
+
+      class App extends Component {
+        constructor() {
+          super()
+          this.state = {
+            loggedIn: !!localStorage.getItem('nostr:privkey'),
+            publicKey: ''
+          }
+        }
+
+        componentDidMount() {
+          if (this.state.loggedIn) {
+            this.generateTaprootAddress()
+          }
+        }
+
+        generateTaprootAddress = () => {
+          try {
+            const privateKey = localStorage.getItem('nostr:privkey')
+            if (!privateKey) {
+              throw new Error('Nostr private key not found in localStorage')
+            }
+
+            // Convert private key to public key
+            const privateKeyBytes = secp256k1.utils.hexToBytes(privateKey)
+            const publicKey = secp256k1.getPublicKey(privateKeyBytes, true)
+
+            // Convert public key to Bitcoin format (remove the first byte)
+            const bitcoinPubKeyBytes = publicKey.slice(1)
+
+            // Calculate Taproot address
+            const taproot_prefix = 'tb'
+            const scriptVersion = 1
+            const words = bech32Library.bech32.toWords(bitcoinPubKeyBytes)
+            const taprootWords = [scriptVersion, ...words]
+            const taprootAddress = bech32Library.bech32m.encode(
+              taproot_prefix,
+              taprootWords,
+              1024
+            )
+
+            console.log('Taproot address:', taprootAddress)
+
+            this.setState({ publicKey: taprootAddress })
+          } catch (error) {
+            console.error('Error generating Taproot address:', error)
+            Swal.fire('Error', 'Failed to generate Taproot address', 'error')
+          }
+        }
+
+        handleLogin = () => {
+          this.setState({ loggedIn: true }, () => {
+            this.generateTaprootAddress()
+          })
+        }
+
+        handleLogout = () => {
+          this.setState({ loggedIn: false, publicKey: '' })
+        }
+
+        copyToClipboard = publicKey => {
+          navigator.clipboard.writeText(publicKey)
+          Swal.fire('Copied', 'Taproot address copied to clipboard', 'success')
+        }
+
+        render() {
+          const { loggedIn, publicKey } = this.state
+          return html`
+            <div class="app">
+              <${Navbar}
+                onLogout=${this.handleLogout}
+                onLogin=${this.handleLogin}
+                publicKey=${publicKey}
+              />
+              <main>
+                <h1>Welcome to Faucets</h1>
+                ${!loggedIn
+                  ? html` <p>Click the login button to access your account.</p>`
+                  : html`
+                      <h2>Your Bitcoin Public Key</h2>
+                      <p class="public-key">
+                        <a
+                          href="https://mempool.space/testnet4/address/${publicKey}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          ${publicKey}
+                        </a>
+                        <button
+                          onClick=${() => this.copyToClipboard(publicKey)}
+                        >
+                          Copy Address
+                        </button>
+                      </p>
+                      <h2>Testnet4 Faucets</h2>
+                      <ul>
+                        <li>
+                          <a
+                            href="https://coinfaucet.eu/en/btc-testnet4/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Coinfaucet</a
+                          >
+                        </li>
+                        <li>
+                          <a
+                            href="https://testnet4.anyone.eu.org/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Anyone</a
+                          >
+                        </li>
+                        <li>
+                          <a
+                            href="https://mempool.space/testnet4/faucet"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Mempool Faucet</a
+                          >
+                        </li>
+                      </ul>
+                      <p>
+                        Use these faucets to request testnet coins for
+                        development and testing purposes. You can use your
+                        Taproot address above to receive funds.
+                      </p>
+                    `}
+              </main>
+            </div>
+          `
+        }
+      }
+
+      render(html`<${App} />`, document.body)
+    </script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body></body>
+</html>
