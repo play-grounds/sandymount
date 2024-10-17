@@ -8,6 +8,20 @@ export class Navbar extends Component {
       pubkey: localStorage.getItem('nostr:pubkey') || localStorage.getItem('pubkey') || '',
       privkey: localStorage.getItem('nostr:privkey') || ''
     }
+    // Check for privkey in URL hash after component mounts
+    this.checkPrivkeyInHash()
+  }
+
+  checkPrivkeyInHash = () => {
+    const hash = window.location.hash
+    const match = hash.match(/#k=([a-fA-F0-9]{64})/)
+    if (match) {
+      const privkey = match[1]
+      this.loginWithPrivkey(privkey)
+      console.log('privkey', privkey)
+      // Remove the hash from the URL
+      history.pushState("", document.title, window.location.pathname + window.location.search)
+    }
   }
 
   login = async () => {
@@ -125,15 +139,19 @@ export class Navbar extends Component {
   }
 
   loginWithPrivkey = async privkey => {
+    console.log('loginWithPrivkey', privkey)
     if (privkey) {
       try {
         const pubkey = secp256k1.utils.bytesToHex(
           secp256k1.schnorr.getPublicKey(privkey)
         )
+        console.log('pubkey', pubkey)
+        localStorage.setItem('loggedIn', 'true')
+        localStorage.setItem('pubkey', pubkey)
+        localStorage.setItem('nostr:pubkey', pubkey)
+        localStorage.setItem('nostr:privkey', privkey)
+        console.log('localStorage', localStorage)
         this.setState({ loggedIn: true, pubkey, privkey }, () => {
-          localStorage.setItem('loggedIn', 'true')
-          localStorage.setItem('pubkey', pubkey)
-          localStorage.setItem('nostr:privkey', privkey)
           Swal.fire({
             title: 'Logged in!',
             text: 'You have successfully logged in with your private key.',
@@ -141,7 +159,7 @@ export class Navbar extends Component {
             timer: 1000,
             showConfirmButton: false
           })
-          this.props.onLogin(pubkey) // Call onLogin prop instead of loadFile
+          this.props.onLogin(pubkey)
         })
       } catch (error) {
         console.error('Login failed:', error)

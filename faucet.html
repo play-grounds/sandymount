@@ -26,16 +26,21 @@
           this.state = {
             loggedIn: false,
             publicKey: '',
-            taprootAddress: ''
+            taprootAddress: '',
+            navbarLoaded: false // Add this new state variable
           }
         }
 
-        componentDidMount() {
+        async componentDidMount() {
+          // Create a promise that resolves after a delay
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+          // Wait for the delay
+          await delay(10)
+          this.setState({ navbarLoaded: true })
+
           // Check if the user was previously logged in
-          const wasLoggedIn = localStorage.getItem('loggedIn') === 'true'
-          if (wasLoggedIn && window.nostr) {
-            this.handleLogin()
-          }
+          this.handleLogin()
         }
 
         generateTaprootAddress = async () => {
@@ -110,10 +115,17 @@
         handleLogin = async () => {
           console.log('handleLogin')
           try {
-            if (window.nostr) {
-              const pubkey = await window.nostr.getPublicKey()
+            if (localStorage.getItem('nostr:privkey')) {
+              // Use the private key from localStorage
               localStorage.setItem('loggedIn', 'true')
               this.setState({ loggedIn: true }, () => {
+                this.generateTaprootAddress()
+              })
+            } else if (window.nostr) {
+              const pubkey = await window.nostr.getPublicKey()
+              localStorage.setItem('nostr:pubkey', pubkey)
+              localStorage.setItem('loggedIn', 'true')
+              this.setState({ loggedIn: true, publicKey: pubkey }, () => {
                 this.generateTaprootAddress()
               })
             } else {
@@ -140,7 +152,13 @@
         }
 
         render() {
-          const { loggedIn, publicKey, taprootAddress } = this.state
+          const { loggedIn, publicKey, taprootAddress, navbarLoaded } =
+            this.state
+
+          if (!navbarLoaded) {
+            return html`<div>Loading...</div>` // Or any loading indicator you prefer
+          }
+
           return html`
             <div class="app">
               <${Navbar}
