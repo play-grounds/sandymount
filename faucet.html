@@ -51,11 +51,12 @@
               publicKey = secp256k1.utils.bytesToHex(
                 secp256k1.getPublicKey(privateKeyBytes, true)
               )
+              publicKey = publicKey.slice(2)
             } else if (window.nostr) {
               console.log('Using window.nostr.getPublicKey()')
               // Get the public key from the extension
               let pubkey = await window.nostr.getPublicKey()
-              publicKey = '02' + pubkey
+              publicKey = pubkey
               localStorage.setItem('nostr:pubkey', pubkey)
               localStorage.setItem('loggedIn', true)
               this.setState({ loggedIn: true, publicKey: publicKey })
@@ -86,7 +87,7 @@
             const pubkeyBytes = secp256k1.utils.hexToBytes(pubkey)
 
             // Convert public key to Bitcoin format (remove the first byte)
-            const bitcoinPubKeyBytes = pubkeyBytes.slice(1)
+            const bitcoinPubKeyBytes = pubkeyBytes.slice(0)
 
             // Calculate Taproot address
             const taproot_prefix = 'tb' // Use 'bc' for mainnet
