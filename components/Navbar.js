@@ -1,11 +1,11 @@
 import { html, Component } from 'https://unpkg.com/htm/preact/standalone.module.js'
 
 export class Navbar extends Component {
-  constructor(props) {
+  constructor (props) {
     super(props)
     this.state = {
       loggedIn: localStorage.getItem('loggedIn') === 'true',
-      pubkey: localStorage.getItem('pubkey') || '',
+      pubkey: localStorage.getItem('nostr:pubkey') || localStorage.getItem('pubkey') || '',
       privkey: localStorage.getItem('nostr:privkey') || ''
     }
   }
@@ -93,6 +93,7 @@ export class Navbar extends Component {
         this.setState({ loggedIn: true, pubkey }, () => {
           localStorage.setItem('loggedIn', 'true')
           localStorage.setItem('pubkey', pubkey)
+          localStorage.setItem('nostr:pubkey', pubkey)
           Swal.fire({
             title: 'Logged in!',
             text: 'You have successfully logged in with your Nostr extension.',
@@ -159,6 +160,7 @@ export class Navbar extends Component {
     this.setState({ loggedIn: false, pubkey: '', privkey: '' })
     localStorage.setItem('loggedIn', 'false')
     localStorage.removeItem('pubkey')
+    localStorage.removeItem('nostr:pubkey')
     localStorage.removeItem('nostr:privkey')
 
     // Clear the textarea
@@ -179,7 +181,7 @@ export class Navbar extends Component {
     this.props.onLogout()
   }
 
-  render() {
+  render () {
     const { loggedIn, pubkey } = this.state
     return html`
       <nav>
