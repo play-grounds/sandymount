@@ -31,8 +31,9 @@
         }
 
         componentDidMount() {
-          // Check if the user is logged in with the extension
-          if (window.nostr) {
+          // Check if the user was previously logged in
+          const wasLoggedIn = localStorage.getItem('loggedIn') === 'true'
+          if (wasLoggedIn && window.nostr) {
             this.handleLogin()
           }
         }
@@ -53,7 +54,11 @@
             } else if (window.nostr) {
               console.log('Using window.nostr.getPublicKey()')
               // Get the public key from the extension
-              publicKey = '02' + (await window.nostr.getPublicKey())
+              let pubkey = await window.nostr.getPublicKey()
+              publicKey = '02' + pubkey
+              localStorage.setItem('nostr:pubkey', pubkey)
+              localStorage.setItem('loggedIn', true)
+              this.setState({ loggedIn: true, publicKey: publicKey })
             } else {
               throw new Error('No private key or Nostr extension found')
             }
@@ -106,14 +111,13 @@
           try {
             if (window.nostr) {
               const pubkey = await window.nostr.getPublicKey()
-
-              // Existing login logic for non-extension login
+              localStorage.setItem('loggedIn', 'true')
               this.setState({ loggedIn: true }, () => {
                 this.generateTaprootAddress()
               })
-              // this.setState({ loggedIn: true, publicKey: pubkey })
             } else {
               // Existing login logic for non-extension login
+              localStorage.setItem('loggedIn', 'true')
               this.setState({ loggedIn: true }, () => {
                 this.generateTaprootAddress()
               })
@@ -125,6 +129,7 @@
         }
 
         handleLogout = () => {
+          localStorage.removeItem('loggedIn')
           this.setState({ loggedIn: false, publicKey: '', taprootAddress: '' })
         }
 
