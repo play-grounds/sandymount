@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UTXO Balance</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script type="module">
+      import {
+        html,
+        render,
+        Component
+      } from 'https://unpkg.com/htm/preact/standalone.module.js'
+      import * as secp256k1 from 'https://cdn.jsdelivr.net/npm/@noble/secp256k1@1.7.1/+esm'
+      import * as bech32Library from 'https://cdn.jsdelivr.net/npm/bech32@2.0.0/+esm'
+      import { Navbar } from './components/Navbar.js'
+      // Add these imports
+      import {
+        Address,
+        Tap,
+        Tx,
+        Signer
+      } from 'https://esm.sh/@cmdcode/tapscript'
+
+      // Make secp256k1 and bech32 available globally
+      window.secp256k1 = secp256k1
+      window.bech32 = bech32Library
+
+      class App extends Component {
+        constructor() {
+          super()
+          this.state = {
+            loggedIn: false,
+            publicKey: '',
+            taprootAddress: '',
+            navbarLoaded: false,
+            balance: null,
+            utxos: [],
+            opReturnMessage: ''
+          }
+        }
+
+        async componentDidMount() {
+          // Create a promise that resolves after a delay
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+          // Wait for the delay
+          await delay(10)
+          this.setState({ navbarLoaded: true })
+
+          // Check if the user was previously logged in
+          this.handleLogin()
+        }
+
+        generateTaprootAddress = async () => {
+          try {
+            let publicKey
+            console.log('generateTaprootAddress')
+
+            const privateKey = localStorage.getItem('nostr:privkey')
+            if (privateKey) {
+              console.log('Using private key from localStorage')
+              // Convert private key to public key
+              const privateKeyBytes = secp256k1.utils.hexToBytes(privateKey)
+              publicKey = secp256k1.utils.bytesToHex(
+                secp256k1.getPublicKey(privateKeyBytes, true)
+              )
+              publicKey = publicKey.slice(2)
+            } else if (window.nostr) {
+              console.log('Using window.nostr.getPublicKey()')
+              // Get the public key from the extension
+              let pubkey = await window.nostr.getPublicKey()
+              publicKey = pubkey
+              localStorage.setItem('nostr:pubkey', pubkey)
+              localStorage.setItem('loggedIn', true)
+              this.setState({ loggedIn: true, publicKey: publicKey })
+            } else {
+              throw new Error('No private key or Nostr extension found')
+            }
+            console.log('publicKey', publicKey)
+
+            // Use the helper function to generate the Taproot address
+            const taprootAddress = this.pubkeyToTaprootAddress(publicKey)
+
+            console.log('Taproot address:', taprootAddress)
+
+            this.setState({ publicKey, taprootAddress })
+          } catch (error) {
+            console.error('Error generating Taproot address:', error)
+            Swal.fire(
+              'Error',
+              'Failed to generate Taproot address: ' + error.message,
+              'error'
+            )
+          }
+        }
+
+        pubkeyToTaprootAddress = pubkey => {
+          try {
+            // Convert hex public key to bytes
+            const pubkeyBytes = secp256k1.utils.hexToBytes(pubkey)
+
+            // Convert public key to Bitcoin format (remove the first byte)
+            const bitcoinPubKeyBytes = pubkeyBytes.slice(0)
+
+            // Calculate Taproot address
+            const taproot_prefix = 'tb' // Use 'bc' for mainnet
+            const scriptVersion = 1
+            const words = bech32Library.bech32.toWords(bitcoinPubKeyBytes)
+            const taprootWords = [scriptVersion, ...words]
+            const taprootAddress = bech32Library.bech32m.encode(
+              taproot_prefix,
+              taprootWords,
+              1024
+            )
+
+            return taprootAddress
+          } catch (error) {
+            console.error('Error generating Taproot address:', error)
+            throw error
+          }
+        }
+
+        handleLogin = async () => {
+          console.log('handleLogin')
+          try {
+            if (localStorage.getItem('nostr:privkey')) {
+              // Use the private key from localStorage
+              localStorage.setItem('loggedIn', 'true')
+              this.setState({ loggedIn: true }, async () => {
+                await this.generateTaprootAddress()
+                this.fetchUTXOsAndCalculateBalance() // Fetch UTXOs after address generation
+              })
+            } else if (window.nostr) {
+              const pubkey = await window.nostr.getPublicKey()
+              localStorage.setItem('nostr:pubkey', pubkey)
+              localStorage.setItem('loggedIn', 'true')
+              this.setState({ loggedIn: true, publicKey: pubkey }, async () => {
+                await this.generateTaprootAddress()
+                this.fetchUTXOsAndCalculateBalance() // Fetch UTXOs after address generation
+              })
+            } else {
+              // Existing login logic for non-extension login
+              localStorage.setItem('loggedIn', 'true')
+              this.setState({ loggedIn: true }, async () => {
+                await this.generateTaprootAddress()
+                this.fetchUTXOsAndCalculateBalance() // Fetch UTXOs after address generation
+              })
+            }
+          } catch (error) {
+            console.error('Login error:', error)
+            Swal.fire('Error', 'Failed to log in: ' + error.message, 'error')
+          }
+        }
+
+        handleLogout = () => {
+          localStorage.removeItem('loggedIn')
+          this.setState({
+            loggedIn: false,
+            publicKey: '',
+            taprootAddress: '',
+            balance: null,
+            utxos: [],
+            opReturnMessage: ''
+          })
+        }
+
+        copyToClipboard = publicKey => {
+          navigator.clipboard.writeText(publicKey)
+          Swal.fire('Copied', 'Taproot address copied to clipboard', 'success')
+        }
+
+        fetchUTXOsAndCalculateBalance = async () => {
+          try {
+            const response = await fetch(
+              `https://mempool.space/testnet4/api/address/${this.state.taprootAddress}/utxo`
+            )
+            const utxos = await response.json()
+            const balance = utxos.reduce((sum, utxo) => sum + utxo.value, 0)
+            this.setState({ balance, utxos }) // Update this line to include utxos
+          } catch (error) {
+            console.error('Error fetching UTXOs:', error)
+            Swal.fire(
+              'Error',
+              'Failed to fetch UTXOs: ' + error.message,
+              'error'
+            )
+          }
+        }
+
+        renderUTXOTable = () => {
+          const { utxos } = this.state
+          if (utxos.length === 0) {
+            return html`<p>No UTXOs found.</p>`
+          }
+          return html`
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Txid</th>
+                    <th>Vout</th>
+                    <th>Value (satoshis)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${utxos.map(
+                    utxo => html`
+                      <tr>
+                        <td title=${utxo.txid}>
+                          ${this.truncateString(utxo.txid, 10)}
+                        </td>
+                        <td>${utxo.vout}</td>
+                        <td>${utxo.value}</td>
+                      </tr>
+                    `
+                  )}
+                </tbody>
+              </table>
+            </div>
+          `
+        }
+
+        truncateString = (str, num) => {
+          if (str.length <= num) {
+            return str
+          }
+          return str.slice(0, num) + '...'
+        }
+
+        handleOpReturnMessageChange = event => {
+          this.setState({ opReturnMessage: event.target.value })
+        }
+
+        sendOpReturnTransaction = async () => {
+          try {
+            const { taprootAddress, utxos, opReturnMessage } = this.state
+            const privateKey = localStorage.getItem('nostr:privkey')
+
+            if (!privateKey) {
+              throw new Error('Private key not found')
+            }
+
+            // Prepare inputs
+            const inputs = utxos.map(utxo => ({
+              txid: utxo.txid,
+              vout: utxo.vout,
+              prevout: {
+                value: BigInt(utxo.value),
+                scriptPubKey: ['OP_1', this.state.publicKey]
+              }
+            }))
+
+            // Calculate total input amount
+            const totalInput = utxos.reduce(
+              (sum, utxo) => sum + BigInt(utxo.value),
+              BigInt(0)
+            )
+
+            // Prepare outputs
+            const fee = BigInt(15000) // 20,000 satoshis fee
+            const outputs = [
+              {
+                value: totalInput - fee,
+                scriptPubKey: ['OP_1', this.state.publicKey]
+              },
+              {
+                value: BigInt(0),
+                scriptPubKey: [
+                  'OP_RETURN',
+                  new TextEncoder().encode(opReturnMessage) // Use TextEncoder instead of Buffer
+                ]
+              }
+            ]
+
+            // Create the transaction
+            const txdata = Tx.create({
+              vin: inputs,
+              vout: outputs
+            })
+
+            // Sign the transaction
+            for (let i = 0; i < inputs.length; i++) {
+              const sig = Signer.taproot.sign(privateKey, txdata, i)
+              txdata.vin[i].witness = [sig]
+            }
+
+            // Encode the transaction
+            const signedTx = Tx.encode(txdata).hex
+
+            console.log('Signed transaction:', signedTx)
+
+            // Display the transaction to the user
+            Swal.fire({
+              title: 'Transaction Created',
+              html: `
+                <p>Your transaction has been created but not sent. Here's the hex:</p>
+                <textarea readonly id="txHex" style="width: 100%; height: 100px;">${signedTx}</textarea>
+                <button onclick="copyTxHex()">Copy Transaction Hex</button>
+                <p>To broadcast this transaction:</p>
+                <ol>
+                  <li>Copy the transaction hex above</li>
+                  <li>Go to <a href="https://mempool.space/testnet4/tx/push" target="_blank">https://mempool.space/testnet4/tx/push</a></li>
+                  <li>Paste the hex into the input field</li>
+                  <li>Click "Broadcast Transaction"</li>
+                </ol>
+              `,
+              icon: 'info',
+              confirmButtonText: 'OK',
+              didOpen: () => {
+                window.copyTxHex = () => {
+                  const txHex = document.getElementById('txHex')
+                  txHex.select()
+                  document.execCommand('copy')
+                  Swal.showValidationMessage(
+                    'Transaction hex copied to clipboard!'
+                  )
+                  setTimeout(() => Swal.resetValidationMessage(), 2000)
+                }
+              }
+            })
+
+            this.setState({ opReturnMessage: '' })
+            // Note: We're not calling fetchUTXOsAndCalculateBalance here anymore
+          } catch (error) {
+            console.error('Error creating OP_RETURN transaction:', error)
+            Swal.fire(
+              'Error',
+              'Failed to create transaction: ' + error.message,
+              'error'
+            )
+          }
+        }
+
+        render() {
+          const {
+            loggedIn,
+            publicKey,
+            taprootAddress,
+            navbarLoaded,
+            balance,
+            utxos,
+            opReturnMessage
+          } = this.state
+
+          if (!navbarLoaded) {
+            return html`<div>Loading...</div>`
+          }
+
+          return html`
+            <div class="app">
+              <${Navbar}
+                onLogout=${this.handleLogout}
+                onLogin=${this.handleLogin}
+                publicKey=${publicKey}
+              />
+              <main>
+                <h1>OP_RETURN Sender</h1>
+                ${!loggedIn
+                  ? html`<p>Click the login button to access your account.</p>`
+                  : html`
+                      <h2>Your Bitcoin Taproot Address</h2>
+                      <p class="public-key">
+                        <a
+                          href="https://mempool.space/testnet4/address/${taprootAddress}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title=${taprootAddress}
+                        >
+                          ${this.truncateString(taprootAddress, 20)}
+                        </a>
+                        <br />
+                        <button
+                          onClick=${() => this.copyToClipboard(taprootAddress)}
+                        >
+                          Copy Address
+                        </button>
+                      </p>
+                      <h2>Balance</h2>
+                      <p>
+                        ${balance !== null
+                          ? `${balance} satoshis`
+                          : 'Loading...'}
+                      </p>
+                      <button onClick=${this.fetchUTXOsAndCalculateBalance}>
+                        Refresh Balance
+                      </button>
+                      <h2>UTXOs</h2>
+                      ${this.renderUTXOTable()}
+                      <h2>Send OP_RETURN Transaction</h2>
+                      <input
+                        type="text"
+                        value=${this.state.opReturnMessage}
+                        onInput=${this.handleOpReturnMessageChange}
+                        placeholder="Enter OP_RETURN message"
+                      />
+                      <button onClick=${this.sendOpReturnTransaction}>
+                        Create OP_RETURN Transaction
+                      </button>
+                    `}
+              </main>
+            </div>
+          `
+        }
+      }
+
+      render(html`<${App} />`, document.body)
+    </script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body></body>
+</html>
