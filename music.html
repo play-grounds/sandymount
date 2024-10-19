@@ -24,6 +24,7 @@
         max-width: 800px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         display: flex;
+        flex-direction: column;
       }
       .main-player {
         padding: 24px;
@@ -113,9 +114,9 @@
       .playlist {
         background-color: #252836;
         padding: 24px;
-        width: 300px;
+        width: 100%;
         overflow-y: auto;
-        max-height: 500px;
+        max-height: 300px;
       }
       .playlist-title {
         font-size: 22px;
@@ -168,6 +169,37 @@
         border-radius: 50%;
         background: #9f75ff;
         cursor: pointer;
+      }
+
+      @media (min-width: 768px) {
+        .player {
+          flex-direction: row;
+        }
+
+        .playlist {
+          width: 300px;
+          max-height: 500px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .controls {
+          gap: 16px;
+        }
+
+        .play-btn {
+          width: 56px;
+          height: 56px;
+          font-size: 28px;
+        }
+
+        .song-title {
+          font-size: 24px;
+        }
+
+        .artist {
+          font-size: 16px;
+        }
       }
     </style>
   </head>
