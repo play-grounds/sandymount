@@ -309,13 +309,22 @@
               )
 
               // Sort fileHandles based on last played time
-              fileHandles.sort(
-                (a, b) => lastPlayed[b.name] - lastPlayed[a.name]
-              )
+              fileHandles.sort((a, b) => {
+                const timeA = lastPlayed[a.name] || 0
+                const timeB = lastPlayed[b.name] || 0
+                return timeB - timeA
+              })
 
               setFileHandles(fileHandles)
               setPlaybackPositions(positions)
               setLastPlayedTime(lastPlayed)
+
+              // Load the most recently played video
+              if (fileHandles.length > 0) {
+                const lastPlayedHandle = fileHandles[0]
+                setSavedFileHandle(lastPlayedHandle)
+                await loadVideo(lastPlayedHandle)
+              }
             })
             .catch(error => {
               console.error('Error displaying IndexedDB data:', error)
