@@ -213,11 +213,57 @@
         const [playbackPositions, setPlaybackPositions] = useState({})
         const [lastPlayedTime, setLastPlayedTime] = useState({})
 
+        const handleKeyDown = event => {
+          if (event.code === 'Space' && event.target.tagName !== 'BUTTON') {
+            event.preventDefault()
+            togglePlayPause()
+          } else if (event.code === 'ArrowRight') {
+            if (event.ctrlKey) {
+              event.preventDefault()
+              playSecondMostRecentVideo()
+            } else {
+              event.preventDefault()
+              skipForward()
+            }
+          } else if (event.code === 'ArrowLeft') {
+            event.preventDefault()
+            skipBackward()
+          } else if (event.code === 'KeyF') {
+            event.preventDefault()
+            toggleFullscreen()
+          }
+        }
+
+        const skipForward = () => {
+          const videoPlayer = document.getElementById('videoPlayer')
+          if (videoPlayer) {
+            videoPlayer.currentTime = Math.min(
+              videoPlayer.currentTime + 5,
+              videoPlayer.duration
+            )
+          }
+        }
+
+        const skipBackward = () => {
+          const videoPlayer = document.getElementById('videoPlayer')
+          if (videoPlayer) {
+            videoPlayer.currentTime = Math.max(videoPlayer.currentTime - 5, 0)
+          }
+        }
+
         useEffect(() => {
           initDB().then(() => {
             loadSavedFileHandle()
             displayIndexedDBData()
           })
+
+          // Update global event listener for spacebar, right arrow, and left arrow
+          document.addEventListener('keydown', handleKeyDown)
+
+          // Clean up the event listener when the component unmounts
+          return () => {
+            document.removeEventListener('keydown', handleKeyDown)
+          }
         }, [])
 
         const loadSavedFileHandle = async () => {
@@ -481,6 +527,67 @@
           }
         }
 
+        const togglePlayPause = () => {
+          const videoPlayer = document.getElementById('videoPlayer')
+          if (videoPlayer) {
+            if (videoPlayer.paused) {
+              videoPlayer.play()
+              setIsPlaying(true)
+            } else {
+              videoPlayer.pause()
+              setIsPlaying(false)
+            }
+          }
+        }
+
+        // Add this new function to toggle fullscreen
+        const toggleFullscreen = () => {
+          const videoPlayer = document.getElementById('videoPlayer')
+          if (!document.fullscreenElement) {
+            if (videoPlayer.requestFullscreen) {
+              videoPlayer.requestFullscreen()
+            } else if (videoPlayer.mozRequestFullScreen) {
+              // Firefox
+              videoPlayer.mozRequestFullScreen()
+            } else if (videoPlayer.webkitRequestFullscreen) {
+              // Chrome, Safari and Opera
+              videoPlayer.webkitRequestFullscreen()
+            } else if (videoPlayer.msRequestFullscreen) {
+              // IE/Edge
+              videoPlayer.msRequestFullscreen()
+            }
+          } else {
+            if (document.exitFullscreen) {
+              document.exitFullscreen()
+            } else if (document.mozCancelFullScreen) {
+              // Firefox
+              document.mozCancelFullScreen()
+            } else if (document.webkitExitFullscreen) {
+              // Chrome, Safari and Opera
+              document.webkitExitFullscreen()
+            } else if (document.msExitFullscreen) {
+              // IE/Edge
+              document.msExitFullscreen()
+            }
+          }
+        }
+
+        // Add this new function
+        const playSecondMostRecentVideo = () => {
+          console.log('playSecondMostRecentVideo')
+
+          console.log('fileHandles', fileHandles)
+          if (fileHandles.length >= 2) {
+            console.log('fileHandles', fileHandles)
+            const currentVideoIndex = fileHandles.findIndex(
+              handle => handle.name === savedFileHandle.name
+            )
+            const secondMostRecentIndex = currentVideoIndex === 0 ? 1 : 0
+            console.log('secondMostRecentIndex', secondMostRecentIndex)
+            playVideoFromHandle(secondMostRecentIndex)
+          }
+        }
+
         return html`
           <h1>Play Local Video</h1>
           <video
@@ -488,6 +595,8 @@
             controls
             src=${videoSrc}
             onTimeUpdate=${updatePlaybackPosition}
+            onPlay=${() => setIsPlaying(true)}
+            onPause=${() => setIsPlaying(false)}
           >
             Your browser does not support the video tag.
           </video>
