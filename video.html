@@ -231,7 +231,8 @@
                 "@type": "Person",
                 "name": "Kaleida"
               },
-              "contentUrl": "https://foaf1.solid.social/public/think.mp3"
+              "contentUrl": "https://foaf1.solid.social/public/think.mp3",
+              "progress": 0
             }
           },
           {
@@ -244,7 +245,8 @@
                 "@type": "Organization",
                 "name": "Blender Foundation"
               },
-              "contentUrl": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"
+              "contentUrl": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4",
+              "progress": 0
             }
           },
           {
@@ -257,44 +259,12 @@
                 "@type": "Organization",
                 "name": "Blender Foundation"
               },
-              "contentUrl": "https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4"
+              "contentUrl": "https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4",
+              "progress": 0
             }
           }
         ]
       }
-    </script>
-
-    <!-- Dior script -->
-    <script>
-      ;(() => {
-        globalThis.qs = Object.fromEntries(
-          new URLSearchParams(document.location.search)
-        )
-
-        globalThis.di = new Proxy(
-          Array.from(
-            document.querySelectorAll(
-              'script[type="application/ld+json"], script[type="application/json"]'
-            )
-          )
-            .map(island => [
-              island.id,
-              JSON.parse(island.text || JSON.stringify(''))
-            ])
-            .reduce((obj, item) => {
-              obj[item[0]] = item[1]
-              return obj
-            }, {}),
-          {
-            set: (obj, prop, value) => {
-              obj[prop] = value
-              var island = document.getElementById(prop)
-              island.text = JSON.stringify(value, null, 2)
-              return true
-            }
-          }
-        )
-      })()
     </script>
 
     <script type="module">
@@ -305,31 +275,87 @@
         useEffect,
         useRef
       } from 'https://unpkg.com/htm@3.0.4/preact/standalone.module.js'
+      import 'https://unpkg.com/dior'
 
-      // Use the data island to get the videos
-      const videos = di['video-data'].itemListElement.map(item => ({
-        title: item.item.name,
-        creator: item.item.creator.name,
-        url: item.item.contentUrl
-      }))
+      // Function to get videos from either query string URI or data island
+      async function getVideos() {
+        const urlParams = new URLSearchParams(window.location.search)
+        const uri = urlParams.get('uri')
+
+        if (uri) {
+          try {
+            const response = await fetch(uri)
+            const data = await response.json()
+            console.log('Loaded JSON data:', data) // Log the loaded JSON data
+            return data.itemListElement.map(item => ({
+              title: item.item.name,
+              creator: item.item.creator.name,
+              url: item.item.contentUrl,
+              progress: item.item.progress || 0 // Add progress to the returned object
+            }))
+          } catch (error) {
+            console.error('Error fetching data from URI:', error)
+            return []
+          }
+        } else {
+          // Use the data island to get the videos
+          const dataIsland = globalThis.di['video-data']
+          console.log('Loaded JSON data:', dataIsland) // Log the loaded JSON data
+          return dataIsland.itemListElement.map(item => ({
+            title: item.item.name,
+            creator: item.item.creator.name,
+            url: item.item.contentUrl,
+            progress: item.item.progress || 0 // This is now in seconds
+          }))
+        }
+      }
 
       const VideoPlayer = () => {
+        const [videos, setVideos] = useState([])
         const [currentVideoIndex, setCurrentVideoIndex] = useState(0)
         const [isPlaying, setIsPlaying] = useState(false)
         const [volume, setVolume] = useState(1)
         const [progress, setProgress] = useState(0)
         const videoRef = useRef(null)
         const progressBarRef = useRef(null)
-
-        const currentVideo = videos[currentVideoIndex]
+        const [initialProgressApplied, setInitialProgressApplied] = useState({})
 
         useEffect(() => {
-          if (isPlaying) {
-            videoRef.current.play()
-          } else {
-            videoRef.current.pause()
+          getVideos().then(fetchedVideos => {
+            setVideos(fetchedVideos)
+          })
+        }, [])
+
+        const currentVideo = videos[currentVideoIndex] || {} // Add a fallback empty object
+
+        useEffect(() => {
+          if (videoRef.current) {
+            if (!initialProgressApplied[currentVideoIndex]) {
+              const initialProgress = videos[currentVideoIndex]?.progress || 0
+              if (initialProgress > 0) {
+                videoRef.current.addEventListener(
+                  'loadedmetadata',
+                  () => {
+                    videoRef.current.currentTime = initialProgress // Set directly in seconds
+                  },
+                  { once: true }
+                )
+              }
+              setInitialProgressApplied(prev => ({
+                ...prev,
+                [currentVideoIndex]: true
+              }))
+            }
+
+            if (isPlaying) {
+              videoRef.current
+                .play()
+                .catch(error => console.error('Error playing video:', error))
+            } else {
+              videoRef.current.pause()
+            }
           }
-        }, [isPlaying, currentVideoIndex])
+        }, [isPlaying, currentVideoIndex, videos])
 
         useEffect(() => {
           if (videoRef.current) {
@@ -339,14 +365,16 @@
 
         useEffect(() => {
           const video = videoRef.current
-          const updateProgress = () => {
-            const currentTime = video.currentTime
-            const duration = video.duration
-            setProgress((currentTime / duration) * 100)
+          if (video) {
+            const updateProgress = () => {
+              const currentTime = video.currentTime
+              const duration = video.duration
+              setProgress((currentTime / duration) * 100)
+            }
+            video.addEventListener('timeupdate', updateProgress)
+            return () => video.removeEventListener('timeupdate', updateProgress)
           }
-          video.addEventListener('timeupdate', updateProgress)
-          return () => video.removeEventListener('timeupdate', updateProgress)
-        }, [])
+        }, [videoRef.current])
 
         const playPreviousSong = () => {
           setCurrentVideoIndex(
@@ -359,9 +387,9 @@
         }
 
         const togglePlay = () => {
-          if (currentVideo.url) {
+          if (currentVideo.url && videoRef.current) {
             setIsPlaying(!isPlaying)
-          } else {
+          } else if (!currentVideo.url) {
             alert("This video doesn't have a URL. Please select another video.")
           }
         }
@@ -385,52 +413,67 @@
         const handleSongClick = index => {
           setCurrentVideoIndex(index)
           setIsPlaying(true)
+          // Reset initial progress applied state for the new video
+          setInitialProgressApplied(prev => ({ ...prev, [index]: false }))
         }
 
         return html`
           <div class="player">
             <div class="main-player">
-              <div class="video-container">
-                <video
-                  ref=${videoRef}
-                  src=${currentVideo.url}
-                  onClick=${togglePlay}
-                ></video>
-              </div>
-              <div class="video-info">
-                <div class="song-title">${currentVideo.title}</div>
-                <div class="artist">${currentVideo.creator}</div>
-              </div>
-              <div class="controls">
-                <button class="control-btn" onClick=${playPreviousSong}>
-                  ⏮
-                </button>
-                <button class="control-btn play-btn" onClick=${togglePlay}>
-                  ${isPlaying ? '⏸' : '▶'}
-                </button>
-                <button class="control-btn" onClick=${playNextSong}>⏭</button>
-              </div>
-              <div
-                class="progress-bar-container"
-                ref=${progressBarRef}
-                onClick=${handleProgressBarClick}
-              >
-                <div class="progress-bar">
-                  <div class="progress" style="width: ${progress}%"></div>
-                </div>
-              </div>
-              <div class="volume-control">
-                <span class="volume-icon">🔊</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value=${volume}
-                  onChange=${handleVolumeChange}
-                  class="volume-slider"
-                />
-              </div>
+              ${currentVideo.url
+                ? html`
+                    <div class="video-container">
+                      <video
+                        ref=${videoRef}
+                        src=${currentVideo.url}
+                        onClick=${togglePlay}
+                      ></video>
+                    </div>
+                    <div class="video-info">
+                      <div class="song-title">
+                        ${currentVideo.title || 'Loading...'}
+                      </div>
+                      <div class="artist">
+                        ${currentVideo.creator || 'Loading...'}
+                      </div>
+                    </div>
+                    <div class="controls">
+                      <button class="control-btn" onClick=${playPreviousSong}>
+                        ⏮
+                      </button>
+                      <button
+                        class="control-btn play-btn"
+                        onClick=${togglePlay}
+                      >
+                        ${isPlaying ? '⏸' : '▶'}
+                      </button>
+                      <button class="control-btn" onClick=${playNextSong}>
+                        ⏭
+                      </button>
+                    </div>
+                    <div
+                      class="progress-bar-container"
+                      ref=${progressBarRef}
+                      onClick=${handleProgressBarClick}
+                    >
+                      <div class="progress-bar">
+                        <div class="progress" style="width: ${progress}%"></div>
+                      </div>
+                    </div>
+                    <div class="volume-control">
+                      <span class="volume-icon">🔊</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value=${volume}
+                        onChange=${handleVolumeChange}
+                        class="volume-slider"
+                      />
+                    </div>
+                  `
+                : html` <div class="loading">Loading videos...</div> `}
             </div>
             <div class="playlist">
               <div class="playlist-title">Video Playlist</div>
