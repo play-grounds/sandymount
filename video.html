@@ -215,6 +215,88 @@
   <body>
     <div id="app"></div>
 
+    <!-- Data Island for videos -->
+    <script id="video-data" type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "item": {
+              "@type": "VideoObject",
+              "name": "Think of me",
+              "creator": {
+                "@type": "Person",
+                "name": "Kaleida"
+              },
+              "contentUrl": "https://foaf1.solid.social/public/think.mp3"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "item": {
+              "@type": "VideoObject",
+              "name": "Big Buck Bunny",
+              "creator": {
+                "@type": "Organization",
+                "name": "Blender Foundation"
+              },
+              "contentUrl": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "item": {
+              "@type": "VideoObject",
+              "name": "Jellyfish",
+              "creator": {
+                "@type": "Organization",
+                "name": "Blender Foundation"
+              },
+              "contentUrl": "https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4"
+            }
+          }
+        ]
+      }
+    </script>
+
+    <!-- Dior script -->
+    <script>
+      ;(() => {
+        globalThis.qs = Object.fromEntries(
+          new URLSearchParams(document.location.search)
+        )
+
+        globalThis.di = new Proxy(
+          Array.from(
+            document.querySelectorAll(
+              'script[type="application/ld+json"], script[type="application/json"]'
+            )
+          )
+            .map(island => [
+              island.id,
+              JSON.parse(island.text || JSON.stringify(''))
+            ])
+            .reduce((obj, item) => {
+              obj[item[0]] = item[1]
+              return obj
+            }, {}),
+          {
+            set: (obj, prop, value) => {
+              obj[prop] = value
+              var island = document.getElementById(prop)
+              island.text = JSON.stringify(value, null, 2)
+              return true
+            }
+          }
+        )
+      })()
+    </script>
+
     <script type="module">
       import {
         html,
@@ -224,23 +306,12 @@
         useRef
       } from 'https://unpkg.com/htm@3.0.4/preact/standalone.module.js'
 
-      const videos = [
-        {
-          title: 'Think of me',
-          creator: 'Kaleida',
-          url: 'https://foaf1.solid.social/public/think.mp3'
-        },
-        {
-          title: 'Big Buck Bunny',
-          creator: 'Blender Foundation',
-          url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4'
-        },
-        {
-          title: 'Jellyfish',
-          creator: 'Blender Foundation',
-          url: 'https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4'
-        }
-      ]
+      // Use the data island to get the videos
+      const videos = di['video-data'].itemListElement.map(item => ({
+        title: item.item.name,
+        creator: item.item.creator.name,
+        url: item.item.contentUrl
+      }))
 
       const VideoPlayer = () => {
         const [currentVideoIndex, setCurrentVideoIndex] = useState(0)
