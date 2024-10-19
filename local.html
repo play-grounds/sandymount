@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Play Local Video</title>
+  </head>
+  <body>
+    <h1>Play Local Video</h1>
+    <video id="videoPlayer" controls width="640" height="360">
+      Your browser does not support the video tag.
+    </video>
+    <br />
+    <button id="selectButton">Select Video</button>
+    <button id="playButton" disabled>Play Video</button>
+    <button id="showDataButton">Show IndexedDB Data</button>
+    <button id="clearDataButton">Clear IndexedDB Data</button>
+
+    <script>
+      const videoPlayer = document.getElementById('videoPlayer')
+      const selectButton = document.getElementById('selectButton')
+      const playButton = document.getElementById('playButton')
+      const showDataButton = document.getElementById('showDataButton')
+      const clearDataButton = document.getElementById('clearDataButton')
+      let savedFileHandle = null
+
+      // Initialize IndexedDB
+      const dbName = 'VideoPlayerDB'
+      const storeName = 'fileHandles'
+      let db
+
+      const dbPromise = indexedDB.open(dbName, 1)
+      dbPromise.onupgradeneeded = function (event) {
+        db = event.target.result
+        db.createObjectStore(storeName)
+      }
+      dbPromise.onsuccess = function (event) {
+        db = event.target.result
+        loadSavedFileHandle()
+      }
+
+      async function getFileHandle() {
+        try {
+          if (savedFileHandle) {
+            // Use the saved file handle if available
+            return savedFileHandle
+          }
+
+          // Request permission to access the file
+          const [fileHandle] = await window.showOpenFilePicker({
+            types: [
+              {
+                description: 'MP4 Video',
+                accept: { 'video/mp4': ['.mp4'] }
+              }
+            ]
+          })
+
+          // Save the file handle for future use
+          savedFileHandle = fileHandle
+          saveFileHandleToIndexedDB(fileHandle)
+          return fileHandle
+        } catch (error) {
+          console.error('Error accessing file:', error)
+        }
+      }
+
+      // Function to save file handle to IndexedDB
+      function saveFileHandleToIndexedDB(fileHandle) {
+        const transaction = db.transaction([storeName], 'readwrite')
+        const store = transaction.objectStore(storeName)
+        store.put(fileHandle, 'lastFileHandle')
+      }
+
+      // Function to load saved file handle from IndexedDB
+      function loadSavedFileHandle() {
+        const transaction = db.transaction([storeName], 'readonly')
+        const store = transaction.objectStore(storeName)
+        const request = store.get('lastFileHandle')
+        request.onsuccess = async function (event) {
+          if (event.target.result) {
+            savedFileHandle = event.target.result
+            playButton.disabled = false
+            // Load the video source when a saved file handle is found
+            await loadVideo()
+          }
+        }
+      }
+
+      async function loadVideo() {
+        try {
+          // Always show the file picker
+          const [fileHandle] = await window.showOpenFilePicker({
+            types: [
+              {
+                description: 'MP4 Video',
+                accept: { 'video/mp4': ['.mp4'] }
+              }
+            ]
+          })
+
+          // Update the saved file handle
+          savedFileHandle = fileHandle
+          saveFileHandleToIndexedDB(fileHandle)
+
+          const file = await fileHandle.getFile()
+          const fileURL = URL.createObjectURL(file)
+          videoPlayer.src = fileURL
+          playButton.disabled = false
+        } catch (error) {
+          console.error('Error selecting video:', error)
+        }
+      }
+
+      // Function to show IndexedDB data
+      async function showIndexedDBData() {
+        const transaction = db.transaction([storeName], 'readonly')
+        const store = transaction.objectStore(storeName)
+        const request = store.get('lastFileHandle')
+        request.onsuccess = function (event) {
+          const fileHandle = event.target.result
+          if (fileHandle) {
+            alert(`Saved file: ${fileHandle.name}`)
+          } else {
+            alert('No saved file handle found in IndexedDB')
+          }
+        }
+      }
+
+      // Function to clear IndexedDB data
+      function clearIndexedDBData() {
+        const transaction = db.transaction([storeName], 'readwrite')
+        const store = transaction.objectStore(storeName)
+        const request = store.clear()
+        request.onsuccess = function () {
+          savedFileHandle = null
+          playButton.disabled = true
+          alert('IndexedDB data cleared')
+        }
+      }
+
+      selectButton.addEventListener('click', loadVideo)
+
+      playButton.addEventListener('click', function () {
+        videoPlayer.play()
+      })
+
+      showDataButton.addEventListener('click', showIndexedDBData)
+
+      clearDataButton.addEventListener('click', clearIndexedDBData)
+    </script>
+  </body>
+</html>
