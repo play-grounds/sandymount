@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Music Player</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #1e1f26;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+      }
+      .player {
+        background-color: #2a2d3e;
+        border-radius: 8px;
+        overflow: hidden;
+        width: 100%;
+        max-width: 800px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+      }
+      .main-player {
+        padding: 24px;
+        flex: 1;
+      }
+      .icon {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 24px;
+      }
+      .song-info {
+        text-align: center;
+        margin-bottom: 24px;
+      }
+      .song-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      .artist {
+        color: #9f9f9f;
+        font-size: 18px;
+      }
+      .controls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 32px;
+        margin-bottom: 32px;
+      }
+      .control-btn {
+        background: none;
+        border: none;
+        color: #9f9f9f;
+        cursor: pointer;
+        font-size: 28px;
+      }
+      .play-btn {
+        background-color: #9f75ff;
+        border-radius: 50%;
+        width: 64px;
+        height: 64px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 32px;
+      }
+      .progress-bar-container {
+        position: relative;
+        height: 24px;
+        margin-bottom: 24px;
+        cursor: pointer;
+      }
+      .progress-bar {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background-color: #4a4a4a;
+        height: 6px;
+        border-radius: 3px;
+        width: 100%;
+      }
+      .progress {
+        background-color: #9f75ff;
+        height: 100%;
+        width: 30%;
+      }
+      .volume-control {
+        display: flex;
+        align-items: center;
+      }
+      .volume-icon {
+        margin-right: 12px;
+        font-size: 24px;
+      }
+      .volume-bar {
+        flex-grow: 1;
+        background-color: #4a4a4a;
+        height: 6px;
+        border-radius: 3px;
+      }
+      .volume {
+        background-color: #9f75ff;
+        height: 100%;
+        width: 70%;
+      }
+      .playlist {
+        background-color: #252836;
+        padding: 24px;
+        width: 300px;
+        overflow-y: auto;
+        max-height: 500px;
+      }
+      .playlist-title {
+        font-size: 22px;
+        font-weight: bold;
+        margin-bottom: 16px;
+      }
+      .playlist-item {
+        padding: 12px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-bottom: 8px;
+      }
+      .playlist-item:hover {
+        background-color: #2a2d3e;
+      }
+      .playlist-item.active {
+        background-color: #9f75ff;
+      }
+      .playlist-item-title {
+        font-weight: bold;
+        margin-bottom: 4px;
+        font-size: 16px;
+      }
+      .playlist-item-artist {
+        font-size: 14px;
+        color: #9f9f9f;
+      }
+      .volume-slider {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: #4a4a4a;
+        outline: none;
+      }
+
+      .volume-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #9f75ff;
+        cursor: pointer;
+      }
+
+      .volume-slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #9f75ff;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script type="module">
+      import {
+        html,
+        render,
+        useState,
+        useEffect,
+        useRef
+      } from 'https://unpkg.com/htm@3.0.4/preact/standalone.module.js'
+
+      const songs = [
+        {
+          title: 'Think of me',
+          artist: 'Kaleida',
+          url: 'https://foaf1.solid.social/public/think.mp3'
+        },
+        {
+          title: 'Interstellar',
+          artist: 'Hans Zimmer',
+          url: 'https://foaf1.solid.social/public/interstellar.mp3'
+        },
+        {
+          title: 'Arvo',
+          artist: 'Arvo',
+          url: 'https://foaf1.solid.social/public/arvo.mp3'
+        }
+      ]
+
+      const MusicPlayer = () => {
+        const [currentSongIndex, setCurrentSongIndex] = useState(0)
+        const [isPlaying, setIsPlaying] = useState(false)
+        const [volume, setVolume] = useState(1)
+        const [progress, setProgress] = useState(0)
+        const audioRef = useRef(null)
+        const progressBarRef = useRef(null)
+
+        const currentSong = songs[currentSongIndex]
+
+        useEffect(() => {
+          if (isPlaying) {
+            audioRef.current.play()
+          } else {
+            audioRef.current.pause()
+          }
+        }, [isPlaying, currentSongIndex])
+
+        useEffect(() => {
+          if (audioRef.current) {
+            audioRef.current.volume = volume
+          }
+        }, [volume])
+
+        useEffect(() => {
+          const audio = audioRef.current
+          const updateProgress = () => {
+            const currentTime = audio.currentTime
+            const duration = audio.duration
+            setProgress((currentTime / duration) * 100)
+          }
+          audio.addEventListener('timeupdate', updateProgress)
+          return () => audio.removeEventListener('timeupdate', updateProgress)
+        }, [])
+
+        const playPreviousSong = () => {
+          setCurrentSongIndex(
+            prevIndex => (prevIndex - 1 + songs.length) % songs.length
+          )
+        }
+
+        const playNextSong = () => {
+          setCurrentSongIndex(prevIndex => (prevIndex + 1) % songs.length)
+        }
+
+        const togglePlay = () => {
+          if (currentSong.url) {
+            setIsPlaying(!isPlaying)
+          } else {
+            alert("This song doesn't have a URL. Please select another song.")
+          }
+        }
+
+        const handleVolumeChange = e => {
+          const newVolume = parseFloat(e.target.value)
+          setVolume(newVolume)
+        }
+
+        const handleProgressBarClick = e => {
+          const progressBarContainer = progressBarRef.current
+          const clickPosition =
+            e.clientX - progressBarContainer.getBoundingClientRect().left
+          const progressBarWidth = progressBarContainer.offsetWidth
+          const newProgress = (clickPosition / progressBarWidth) * 100
+          setProgress(newProgress)
+          audioRef.current.currentTime =
+            (newProgress / 100) * audioRef.current.duration
+        }
+
+        const handleSongClick = index => {
+          setCurrentSongIndex(index)
+          setIsPlaying(true)
+        }
+
+        return html`
+          <div class="player">
+            <audio ref=${audioRef} src=${currentSong.url}></audio>
+            <div class="main-player">
+              <div class="icon">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="64"
+                  height="64"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#9f75ff"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M9 18V5l12-2v13"></path>
+                  <circle cx="6" cy="18" r="3"></circle>
+                  <circle cx="18" cy="16" r="3"></circle>
+                </svg>
+              </div>
+              <div class="song-info">
+                <div class="song-title">${currentSong.title}</div>
+                <div class="artist">${currentSong.artist}</div>
+              </div>
+              <div class="controls">
+                <button class="control-btn" onClick=${playPreviousSong}>
+                  ⏮
+                </button>
+                <button class="control-btn play-btn" onClick=${togglePlay}>
+                  ${isPlaying ? '⏸' : '▶'}
+                </button>
+                <button class="control-btn" onClick=${playNextSong}>⏭</button>
+              </div>
+              <div
+                class="progress-bar-container"
+                ref=${progressBarRef}
+                onClick=${handleProgressBarClick}
+              >
+                <div class="progress-bar">
+                  <div class="progress" style="width: ${progress}%"></div>
+                </div>
+              </div>
+              <div class="volume-control">
+                <span class="volume-icon">🔊</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value=${volume}
+                  onChange=${handleVolumeChange}
+                  class="volume-slider"
+                />
+              </div>
+            </div>
+            <div class="playlist">
+              <div class="playlist-title">Playlist</div>
+              ${songs.map(
+                (song, index) => html`
+                  <div
+                    key=${index}
+                    class=${`playlist-item ${
+                      index === currentSongIndex ? 'active' : ''
+                    }`}
+                    onClick=${() => handleSongClick(index)}
+                  >
+                    <div class="playlist-item-title">${song.title}</div>
+                    <div class="playlist-item-artist">${song.artist}</div>
+                  </div>
+                `
+              )}
+            </div>
+          </div>
+        `
+      }
+
+      render(html`<${MusicPlayer} />`, document.getElementById('app'))
+    </script>
+  </body>
+</html>
