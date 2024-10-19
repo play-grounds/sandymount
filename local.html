@@ -15,12 +15,13 @@
       const dbName = 'VideoPlayerDB'
       const storeName = 'fileHandles'
       const positionStoreName = 'playbackPositions'
+      const lastPlayedStoreName = 'lastPlayedTimes'
       let db
 
       // Initialize IndexedDB
       const initDB = () => {
         return new Promise((resolve, reject) => {
-          const dbPromise = indexedDB.open(dbName, 2)
+          const dbPromise = indexedDB.open(dbName, 3)
           dbPromise.onupgradeneeded = function (event) {
             db = event.target.result
             if (!db.objectStoreNames.contains(storeName)) {
@@ -28,6 +29,9 @@
             }
             if (!db.objectStoreNames.contains(positionStoreName)) {
               db.createObjectStore(positionStoreName)
+            }
+            if (!db.objectStoreNames.contains(lastPlayedStoreName)) {
+              db.createObjectStore(lastPlayedStoreName)
             }
           }
           dbPromise.onsuccess = function (event) {
@@ -70,6 +74,28 @@
           const store = transaction.objectStore(positionStoreName)
           const request = store.put({ position }, fileName)
           request.onsuccess = resolve
+          request.onerror = reject
+        })
+      }
+
+      const saveLastPlayedTime = (fileName, time) => {
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction([lastPlayedStoreName], 'readwrite')
+          const store = transaction.objectStore(lastPlayedStoreName)
+          const request = store.put(time, fileName)
+          request.onsuccess = resolve
+          request.onerror = reject
+        })
+      }
+
+      const getLastPlayedTime = fileName => {
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction([lastPlayedStoreName], 'readonly')
+          const store = transaction.objectStore(lastPlayedStoreName)
+          const request = store.get(fileName)
+          request.onsuccess = function (event) {
+            resolve(event.target.result || 0)
+          }
           request.onerror = reject
         })
       }
@@ -148,36 +174,36 @@
 
         const displayIndexedDBData = async () => {
           const transaction = db.transaction(
-            [storeName, positionStoreName],
+            [storeName, positionStoreName, lastPlayedStoreName],
             'readonly'
           )
           const fileStore = transaction.objectStore(storeName)
           const positionStore = transaction.objectStore(positionStoreName)
+          const lastPlayedStore = transaction.objectStore(lastPlayedStoreName)
 
           const fileRequest = fileStore.get('fileHandles')
           const positionRequest = positionStore.getAll()
+          const lastPlayedRequest = lastPlayedStore.getAll()
 
           Promise.all([
             new Promise(resolve => (fileRequest.onsuccess = resolve)),
-            new Promise(resolve => (positionRequest.onsuccess = resolve))
+            new Promise(resolve => (positionRequest.onsuccess = resolve)),
+            new Promise(resolve => (lastPlayedRequest.onsuccess = resolve))
           ])
             .then(async () => {
               const fileHandles = fileRequest.result || []
               const positions = {}
               const lastPlayed = {}
 
-              console.log('All positions from DB:', positionRequest.result)
-
-              // Use Promise.all to wait for all getPlaybackPosition calls
+              // Use Promise.all to wait for all getPlaybackPosition and getLastPlayedTime calls
               await Promise.all(
                 fileHandles.map(async handle => {
-                  const position = await getPlaybackPosition(handle.name)
-                  positions[handle.name] = position
-                  lastPlayed[handle.name] = position ? Date.now() : 0 // Use current time if position exists
+                  positions[handle.name] = await getPlaybackPosition(
+                    handle.name
+                  )
+                  lastPlayed[handle.name] = await getLastPlayedTime(handle.name)
                 })
               )
-
-              console.log('Processed positions:', positions)
 
               // Sort fileHandles based on last played time
               fileHandles.sort(
@@ -286,11 +312,14 @@
               setIsPlaying(true)
             }
 
-            // Update last played time
+            const currentTime = Date.now()
+            // Update last played time in state and IndexedDB
             setLastPlayedTime(prev => ({
               ...prev,
-              [fileHandle.name]: Date.now()
+              [fileHandle.name]: currentTime
             }))
+            await saveLastPlayedTime(fileHandle.name, currentTime)
+
             // Re-sort the file handles
             setFileHandles(prevHandles =>
               [...prevHandles].sort(
@@ -316,16 +345,21 @@
         const updatePlaybackPosition = () => {
           const videoPlayer = document.getElementById('videoPlayer')
           if (savedFileHandle) {
-            savePlaybackPosition(savedFileHandle.name, videoPlayer.currentTime)
+            const currentTime = videoPlayer.currentTime
+            savePlaybackPosition(savedFileHandle.name, currentTime)
             setPlaybackPositions(prev => ({
               ...prev,
-              [savedFileHandle.name]: videoPlayer.currentTime
+              [savedFileHandle.name]: currentTime
             }))
-            // Update last played time
+
+            const now = Date.now()
+            // Update last played time in state and IndexedDB
             setLastPlayedTime(prev => ({
               ...prev,
-              [savedFileHandle.name]: Date.now()
+              [savedFileHandle.name]: now
             }))
+            saveLastPlayedTime(savedFileHandle.name, now)
+
             // Re-sort the file handles
             setFileHandles(prevHandles =>
               [...prevHandles].sort(
