@@ -4,150 +4,424 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Play Local Video</title>
-  </head>
-  <body>
-    <h1>Play Local Video</h1>
-    <video id="videoPlayer" controls width="640" height="360">
-      Your browser does not support the video tag.
-    </video>
-    <br />
-    <button id="selectButton">Select Video</button>
-    <button id="playButton" disabled>Play Video</button>
-    <button id="showDataButton">Show IndexedDB Data</button>
-    <button id="clearDataButton">Clear IndexedDB Data</button>
+    <script type="module">
+      import {
+        html,
+        render,
+        useState,
+        useEffect
+      } from 'https://unpkg.com/htm@3.0.4/preact/standalone.module.js'
 
-    <script>
-      const videoPlayer = document.getElementById('videoPlayer')
-      const selectButton = document.getElementById('selectButton')
-      const playButton = document.getElementById('playButton')
-      const showDataButton = document.getElementById('showDataButton')
-      const clearDataButton = document.getElementById('clearDataButton')
-      let savedFileHandle = null
-
-      // Initialize IndexedDB
       const dbName = 'VideoPlayerDB'
       const storeName = 'fileHandles'
+      const positionStoreName = 'playbackPositions'
       let db
 
-      const dbPromise = indexedDB.open(dbName, 1)
-      dbPromise.onupgradeneeded = function (event) {
-        db = event.target.result
-        db.createObjectStore(storeName)
-      }
-      dbPromise.onsuccess = function (event) {
-        db = event.target.result
-        loadSavedFileHandle()
-      }
-
-      async function getFileHandle() {
-        try {
-          if (savedFileHandle) {
-            // Use the saved file handle if available
-            return savedFileHandle
+      // Initialize IndexedDB
+      const initDB = () => {
+        return new Promise((resolve, reject) => {
+          const dbPromise = indexedDB.open(dbName, 2)
+          dbPromise.onupgradeneeded = function (event) {
+            db = event.target.result
+            if (!db.objectStoreNames.contains(storeName)) {
+              db.createObjectStore(storeName)
+            }
+            if (!db.objectStoreNames.contains(positionStoreName)) {
+              db.createObjectStore(positionStoreName)
+            }
           }
-
-          // Request permission to access the file
-          const [fileHandle] = await window.showOpenFilePicker({
-            types: [
-              {
-                description: 'MP4 Video',
-                accept: { 'video/mp4': ['.mp4'] }
-              }
-            ]
-          })
-
-          // Save the file handle for future use
-          savedFileHandle = fileHandle
-          saveFileHandleToIndexedDB(fileHandle)
-          return fileHandle
-        } catch (error) {
-          console.error('Error accessing file:', error)
-        }
+          dbPromise.onsuccess = function (event) {
+            db = event.target.result
+            resolve(db)
+          }
+          dbPromise.onerror = reject
+        })
       }
 
-      // Function to save file handle to IndexedDB
-      function saveFileHandleToIndexedDB(fileHandle) {
+      // Helper functions
+      const saveFileHandleToIndexedDB = async fileHandle => {
         const transaction = db.transaction([storeName], 'readwrite')
         const store = transaction.objectStore(storeName)
-        store.put(fileHandle, 'lastFileHandle')
-      }
-
-      // Function to load saved file handle from IndexedDB
-      function loadSavedFileHandle() {
-        const transaction = db.transaction([storeName], 'readonly')
-        const store = transaction.objectStore(storeName)
-        const request = store.get('lastFileHandle')
-        request.onsuccess = async function (event) {
-          if (event.target.result) {
-            savedFileHandle = event.target.result
-            playButton.disabled = false
-            // Load the video source when a saved file handle is found
-            await loadVideo()
-          }
-        }
-      }
-
-      async function loadVideo() {
-        try {
-          // Always show the file picker
-          const [fileHandle] = await window.showOpenFilePicker({
-            types: [
-              {
-                description: 'MP4 Video',
-                accept: { 'video/mp4': ['.mp4'] }
-              }
-            ]
-          })
-
-          // Update the saved file handle
-          savedFileHandle = fileHandle
-          saveFileHandleToIndexedDB(fileHandle)
-
-          const file = await fileHandle.getFile()
-          const fileURL = URL.createObjectURL(file)
-          videoPlayer.src = fileURL
-          playButton.disabled = false
-        } catch (error) {
-          console.error('Error selecting video:', error)
-        }
-      }
-
-      // Function to show IndexedDB data
-      async function showIndexedDBData() {
-        const transaction = db.transaction([storeName], 'readonly')
-        const store = transaction.objectStore(storeName)
-        const request = store.get('lastFileHandle')
+        const request = store.get('fileHandles')
         request.onsuccess = function (event) {
-          const fileHandle = event.target.result
-          if (fileHandle) {
-            alert(`Saved file: ${fileHandle.name}`)
-          } else {
-            alert('No saved file handle found in IndexedDB')
+          let fileHandles = event.target.result || []
+          fileHandles.push(fileHandle)
+          store.put(fileHandles, 'fileHandles')
+        }
+      }
+
+      const getPlaybackPosition = fileName => {
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction([positionStoreName], 'readonly')
+          const store = transaction.objectStore(positionStoreName)
+          const request = store.get(fileName)
+          request.onsuccess = function (event) {
+            const result = event.target.result
+            console.log(`Retrieving position for ${fileName}:`, result)
+            resolve(result ? result.position : null)
+          }
+          request.onerror = reject
+        })
+      }
+
+      const savePlaybackPosition = (fileName, position) => {
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction([positionStoreName], 'readwrite')
+          const store = transaction.objectStore(positionStoreName)
+          const request = store.put({ position }, fileName)
+          request.onsuccess = resolve
+          request.onerror = reject
+        })
+      }
+
+      // ... (other helper functions like loadVideo, selectVideo, etc.)
+
+      function App() {
+        const [savedFileHandle, setSavedFileHandle] = useState(null)
+        const [videoSrc, setVideoSrc] = useState('')
+        const [fileHandles, setFileHandles] = useState([])
+        const [isPlaying, setIsPlaying] = useState(false)
+        const [playbackPositions, setPlaybackPositions] = useState({})
+        const [lastPlayedTime, setLastPlayedTime] = useState({})
+
+        useEffect(() => {
+          initDB().then(() => {
+            loadSavedFileHandle()
+            displayIndexedDBData()
+          })
+        }, [])
+
+        const loadSavedFileHandle = async () => {
+          const transaction = db.transaction([storeName], 'readonly')
+          const store = transaction.objectStore(storeName)
+          const request = store.get('fileHandles')
+          request.onsuccess = async function (event) {
+            if (event.target.result && event.target.result.length > 0) {
+              const lastHandle =
+                event.target.result[event.target.result.length - 1]
+              setSavedFileHandle(lastHandle)
+              await loadVideo(lastHandle)
+            }
           }
         }
-      }
 
-      // Function to clear IndexedDB data
-      function clearIndexedDBData() {
-        const transaction = db.transaction([storeName], 'readwrite')
-        const store = transaction.objectStore(storeName)
-        const request = store.clear()
-        request.onsuccess = function () {
-          savedFileHandle = null
-          playButton.disabled = true
-          alert('IndexedDB data cleared')
+        const loadVideo = async fileHandle => {
+          try {
+            const file = await fileHandle.getFile()
+            const fileURL = URL.createObjectURL(file)
+            setVideoSrc(fileURL)
+            // Load the saved playback position
+            const position = await getPlaybackPosition(fileHandle.name)
+            if (position) {
+              document.getElementById('videoPlayer').currentTime = position
+            }
+          } catch (error) {
+            console.error('Error loading video:', error)
+            setSavedFileHandle(null)
+          }
         }
+
+        const selectVideo = async () => {
+          try {
+            const [fileHandle] = await window.showOpenFilePicker({
+              types: [
+                {
+                  description: 'MP4 Video',
+                  accept: { 'video/mp4': ['.mp4'] }
+                }
+              ]
+            })
+            setSavedFileHandle(fileHandle)
+            saveFileHandleToIndexedDB(fileHandle)
+            await loadVideo(fileHandle)
+            displayIndexedDBData()
+          } catch (error) {
+            console.error('Error selecting video:', error)
+          }
+        }
+
+        const playVideo = () => {
+          const videoPlayer = document.getElementById('videoPlayer')
+          videoPlayer.play()
+          setIsPlaying(true)
+        }
+
+        const displayIndexedDBData = async () => {
+          const transaction = db.transaction(
+            [storeName, positionStoreName],
+            'readonly'
+          )
+          const fileStore = transaction.objectStore(storeName)
+          const positionStore = transaction.objectStore(positionStoreName)
+
+          const fileRequest = fileStore.get('fileHandles')
+          const positionRequest = positionStore.getAll()
+
+          Promise.all([
+            new Promise(resolve => (fileRequest.onsuccess = resolve)),
+            new Promise(resolve => (positionRequest.onsuccess = resolve))
+          ])
+            .then(async () => {
+              const fileHandles = fileRequest.result || []
+              const positions = {}
+              const lastPlayed = {}
+
+              console.log('All positions from DB:', positionRequest.result)
+
+              // Use Promise.all to wait for all getPlaybackPosition calls
+              await Promise.all(
+                fileHandles.map(async handle => {
+                  const position = await getPlaybackPosition(handle.name)
+                  positions[handle.name] = position
+                  lastPlayed[handle.name] = position ? Date.now() : 0 // Use current time if position exists
+                })
+              )
+
+              console.log('Processed positions:', positions)
+
+              // Sort fileHandles based on last played time
+              fileHandles.sort(
+                (a, b) => lastPlayed[b.name] - lastPlayed[a.name]
+              )
+
+              setFileHandles(fileHandles)
+              setPlaybackPositions(positions)
+              setLastPlayedTime(lastPlayed)
+            })
+            .catch(error => {
+              console.error('Error displaying IndexedDB data:', error)
+            })
+        }
+
+        const clearIndexedDBData = () => {
+          const transaction = db.transaction(
+            [storeName, positionStoreName],
+            'readwrite'
+          )
+          const fileStore = transaction.objectStore(storeName)
+          const positionStore = transaction.objectStore(positionStoreName)
+
+          const fileRequest = fileStore.clear()
+          const positionRequest = positionStore.clear()
+
+          Promise.all([
+            new Promise(resolve => (fileRequest.onsuccess = resolve)),
+            new Promise(resolve => (positionRequest.onsuccess = resolve))
+          ]).then(() => {
+            setSavedFileHandle(null)
+            setVideoSrc('')
+            setFileHandles([])
+            alert('IndexedDB data cleared')
+          })
+        }
+
+        const removeEntry = async index => {
+          const fileHandleToRemove = fileHandles[index]
+          if (fileHandleToRemove) {
+            const transaction = db.transaction(
+              [storeName, positionStoreName],
+              'readwrite'
+            )
+            const fileStore = transaction.objectStore(storeName)
+            const positionStore = transaction.objectStore(positionStoreName)
+
+            // Remove from fileHandles
+            const fileRequest = fileStore.get('fileHandles')
+            fileRequest.onsuccess = function (event) {
+              let currentFileHandles = event.target.result || []
+              currentFileHandles = currentFileHandles.filter(
+                handle => handle.name !== fileHandleToRemove.name
+              )
+              fileStore.put(currentFileHandles, 'fileHandles')
+            }
+
+            // Remove from positionStore
+            positionStore.delete(fileHandleToRemove.name)
+
+            // Update state
+            setFileHandles(prevHandles =>
+              prevHandles.filter((_, i) => i !== index)
+            )
+            setPlaybackPositions(prev => {
+              const newPositions = { ...prev }
+              delete newPositions[fileHandleToRemove.name]
+              return newPositions
+            })
+            setLastPlayedTime(prev => {
+              const newTimes = { ...prev }
+              delete newTimes[fileHandleToRemove.name]
+              return newTimes
+            })
+
+            // If the removed entry was the current video, clear it
+            if (
+              savedFileHandle &&
+              savedFileHandle.name === fileHandleToRemove.name
+            ) {
+              setSavedFileHandle(null)
+              setVideoSrc('')
+              setIsPlaying(false)
+            }
+          }
+        }
+
+        const playVideoFromHandle = async index => {
+          const fileHandle = fileHandles[index]
+          if (fileHandle) {
+            const videoPlayer = document.getElementById('videoPlayer')
+
+            if (
+              savedFileHandle &&
+              savedFileHandle.name === fileHandle.name &&
+              isPlaying
+            ) {
+              // If the clicked video is already playing, pause it
+              videoPlayer.pause()
+              setIsPlaying(false)
+            } else {
+              // Load and play the new video
+              setSavedFileHandle(fileHandle)
+              await loadVideo(fileHandle)
+              videoPlayer.play()
+              setIsPlaying(true)
+            }
+
+            // Update last played time
+            setLastPlayedTime(prev => ({
+              ...prev,
+              [fileHandle.name]: Date.now()
+            }))
+            // Re-sort the file handles
+            setFileHandles(prevHandles =>
+              [...prevHandles].sort(
+                (a, b) => lastPlayedTime[b.name] - lastPlayedTime[a.name]
+              )
+            )
+          }
+        }
+
+        const loadPlaybackPositions = async () => {
+          const transaction = db.transaction([positionStoreName], 'readonly')
+          const store = transaction.objectStore(positionStoreName)
+          const request = store.getAll()
+          request.onsuccess = function (event) {
+            const positions = {}
+            event.target.result.forEach(item => {
+              positions[item.key] = item.position
+            })
+            setPlaybackPositions(positions)
+          }
+        }
+
+        const updatePlaybackPosition = () => {
+          const videoPlayer = document.getElementById('videoPlayer')
+          if (savedFileHandle) {
+            savePlaybackPosition(savedFileHandle.name, videoPlayer.currentTime)
+            setPlaybackPositions(prev => ({
+              ...prev,
+              [savedFileHandle.name]: videoPlayer.currentTime
+            }))
+            // Update last played time
+            setLastPlayedTime(prev => ({
+              ...prev,
+              [savedFileHandle.name]: Date.now()
+            }))
+            // Re-sort the file handles
+            setFileHandles(prevHandles =>
+              [...prevHandles].sort(
+                (a, b) => lastPlayedTime[b.name] - lastPlayedTime[a.name]
+              )
+            )
+          }
+        }
+
+        return html`
+          <h1>Play Local Video</h1>
+          <video
+            id="videoPlayer"
+            controls
+            width="640"
+            height="360"
+            src=${videoSrc}
+            onTimeUpdate=${updatePlaybackPosition}
+          >
+            Your browser does not support the video tag.
+          </video>
+          <br />
+          <button onClick=${selectVideo}>Select Video</button>
+          <button
+            onClick=${playVideo}
+            disabled=${!savedFileHandle || isPlaying}
+          >
+            Play Video
+          </button>
+          <button onClick=${displayIndexedDBData}>Show IndexedDB Data</button>
+          <button onClick=${clearIndexedDBData}>Clear IndexedDB Data</button>
+          <div id="dataTable" style="margin-top: 20px">
+            ${fileHandles.length === 0
+              ? html`<p>No data found in IndexedDB.</p>`
+              : html`
+                  <table
+                    style="border-collapse: collapse; width: 100%; max-width: 600px;"
+                  >
+                    <thead>
+                      <tr style="background-color: #f2f2f2;">
+                        <th
+                          style="border: 1px solid #ddd; padding: 8px; text-align: left;"
+                        >
+                          File Name
+                        </th>
+                        <th
+                          style="border: 1px solid #ddd; padding: 8px; text-align: left;"
+                        >
+                          Last Position
+                        </th>
+                        <th
+                          style="border: 1px solid #ddd; padding: 8px; text-align: center;"
+                        >
+                          Remove
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${fileHandles.map(
+                        (handle, index) => html`
+                          <tr
+                            style="background-color: ${index % 2 === 0
+                              ? '#ffffff'
+                              : '#f8f8f8'};"
+                          >
+                            <td
+                              style="border: 1px solid #ddd; padding: 8px; cursor: pointer;"
+                              onClick=${() => playVideoFromHandle(index)}
+                            >
+                              ${handle.name || 'N/A'}
+                            </td>
+                            <td style="border: 1px solid #ddd; padding: 8px;">
+                              ${playbackPositions[handle.name] !== undefined
+                                ? `${Math.floor(
+                                    playbackPositions[handle.name]
+                                  )} seconds`
+                                : 'N/A'}
+                            </td>
+                            <td
+                              style="border: 1px solid #ddd; padding: 8px; text-align: center; cursor: pointer;"
+                              onClick=${() => removeEntry(index)}
+                            >
+                              🗑️
+                            </td>
+                          </tr>
+                        `
+                      )}
+                    </tbody>
+                  </table>
+                `}
+          </div>
+        `
       }
 
-      selectButton.addEventListener('click', loadVideo)
-
-      playButton.addEventListener('click', function () {
-        videoPlayer.play()
-      })
-
-      showDataButton.addEventListener('click', showIndexedDBData)
-
-      clearDataButton.addEventListener('click', clearIndexedDBData)
+      render(html`<${App} />`, document.body)
     </script>
-  </body>
+  </head>
+  <body></body>
 </html>
