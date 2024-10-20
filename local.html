@@ -106,6 +106,12 @@
           font-size: 14px;
         }
       }
+      td {
+        max-width: 400px; /* Set a maximum width for table cells */
+        overflow: hidden; /* Hide overflow content */
+        text-overflow: ellipsis; /* Add ellipsis (...) for overflow text */
+        white-space: nowrap; /* Prevent text from wrapping to a new line */
+      }
     </style>
     <script type="module">
       import {
@@ -231,6 +237,13 @@
           } else if (event.code === 'KeyF') {
             event.preventDefault()
             toggleFullscreen()
+          } else if (event.code === 'KeyP') {
+            event.preventDefault()
+            playFor15Seconds()
+          } else if (event.code === 'KeyR') {
+            // Add this block
+            event.preventDefault()
+            playRandomVideo()
           }
         }
 
@@ -575,18 +588,90 @@
 
         // Add this new function
         const playSecondMostRecentVideo = () => {
-          console.log('playSecondMostRecentVideo')
+          loadSavedFileHandle()
 
-          console.log('fileHandles', fileHandles)
-          if (fileHandles.length >= 2) {
-            console.log('fileHandles', fileHandles)
-            const currentVideoIndex = fileHandles.findIndex(
-              handle => handle.name === savedFileHandle.name
+          if (fileHandles.length < 2) {
+            console.warn(
+              'Not enough videos to play the second most recent one.'
             )
-            const secondMostRecentIndex = currentVideoIndex === 0 ? 1 : 0
-            console.log('secondMostRecentIndex', secondMostRecentIndex)
-            playVideoFromHandle(secondMostRecentIndex)
+            return
           }
+
+          const currentVideoIndex = fileHandles.findIndex(
+            handle => handle.name === savedFileHandle.name
+          )
+
+          // Determine the index of the second most recent video
+          const secondMostRecentIndex = currentVideoIndex === 0 ? 1 : 0
+          playVideoFromHandle(secondMostRecentIndex)
+        }
+
+        const scanDirectory = async () => {
+          try {
+            const directoryHandle = await window.showDirectoryPicker()
+            const mp4Files = []
+
+            for await (const entry of directoryHandle.values()) {
+              if (entry.kind === 'file' && entry.name.endsWith('.mp4')) {
+                mp4Files.push(entry)
+              }
+            }
+
+            // Save each file handle to IndexedDB and update the state
+            for (const fileHandle of mp4Files) {
+              await saveFileHandleToIndexedDB(fileHandle)
+            }
+
+            displayIndexedDBData()
+          } catch (error) {
+            console.error('Error scanning directory:', error)
+          }
+        }
+
+        const playFor15Seconds = async () => {
+          const videoPlayer = document.getElementById('videoPlayer')
+          if (videoPlayer) {
+            // Request fullscreen
+            if (videoPlayer.requestFullscreen) {
+              await videoPlayer.requestFullscreen()
+            } else if (videoPlayer.mozRequestFullScreen) {
+              await videoPlayer.mozRequestFullScreen()
+            } else if (videoPlayer.webkitRequestFullscreen) {
+              await videoPlayer.webkitRequestFullscreen()
+            } else if (videoPlayer.msRequestFullscreen) {
+              await videoPlayer.msRequestFullscreen()
+            }
+
+            // Play the video
+            videoPlayer.play()
+            setIsPlaying(true)
+
+            // Pause after 15 seconds
+            setTimeout(() => {
+              videoPlayer.pause()
+              setIsPlaying(false)
+
+              // Exit fullscreen
+              if (document.exitFullscreen) {
+                document.exitFullscreen()
+              } else if (document.mozCancelFullScreen) {
+                document.mozCancelFullScreen()
+              } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen()
+              } else if (document.msExitFullscreen) {
+                document.msExitFullscreen()
+              }
+            }, 15000)
+          }
+        }
+
+        const playRandomVideo = async () => {
+          if (fileHandles.length === 0) {
+            console.warn('No videos available to play.')
+            return
+          }
+          const randomIndex = Math.floor(Math.random() * fileHandles.length)
+          await playVideoFromHandle(randomIndex)
         }
 
         return html`
@@ -603,13 +688,10 @@
           </video>
           <div class="button-container">
             <button onClick=${selectVideo}>Select Video</button>
-            <button
-              onClick=${playVideo}
-              disabled=${!savedFileHandle || isPlaying}
-            >
-              Play Video
-            </button>
             <button onClick=${clearIndexedDBData}>Clear Data</button>
+            <button onClick=${scanDirectory}>Scan Directory</button>
+            <button onClick=${playRandomVideo}>Play Random Video</button>
+            <!-- Add this line -->
           </div>
           <div id="dataTable">
             ${fileHandles.length === 0
