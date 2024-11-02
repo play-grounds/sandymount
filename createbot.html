@@ -172,6 +172,7 @@
         background-color: #45a049;
       }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>
     <script type="module">
       import {
         html,
@@ -186,7 +187,29 @@
         nip19
       } from 'https://cdn.jsdelivr.net/npm/nostr-tools@1.17.0/+esm'
 
+      // Base32 encoding function
+      const hexToBytes = hex => {
+        const cleanHex = hex.replace(/[^0-9a-fA-F]/g, '')
+        if (cleanHex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(cleanHex)) {
+          throw new Error('Invalid hex format')
+        }
+
+        const bytes = new Uint8Array(cleanHex.length / 2)
+        for (let i = 0; i < cleanHex.length; i += 2) {
+          bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16)
+        }
+        return bytes
+      }
+
+      const bytesToHex = bytes => {
+        return Array.from(bytes)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('')
+      }
+
+      // Z32 encoding function (new)
       const z32Encode = data => {
+        console.log('data', data)
         const alphabet = 'ybndrfg8ejkmcpqxot1uwisza345h769'
         let bits = 0
         let value = 0
@@ -207,15 +230,6 @@
         }
 
         return output
-      }
-
-      const hexToBytes = hex => {
-        const cleanHex = hex.replace(/[^0-9a-fA-F]/g, '')
-        const bytes = new Uint8Array(cleanHex.length / 2)
-        for (let i = 0; i < cleanHex.length; i += 2) {
-          bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16)
-        }
-        return bytes
       }
 
       const KeyDisplay = ({ privateKey, nsec, pubkey }) => {
@@ -257,6 +271,13 @@
             </p>
           </div>
         `
+      }
+
+      const generateEd25519KeyPair = privateKeyHex => {
+        // Convert the private key to bytes
+        const privateKeyBytes = hexToBytes(privateKeyHex)
+        // Return the keypair directly
+        return nacl.sign.keyPair.fromSeed(privateKeyBytes)
       }
 
       class NostrApp extends Component {
@@ -370,23 +391,40 @@
         }
 
         async createEvent() {
-          const event = {
-            kind: 0,
-            pubkey: this.state.pubkey,
-            created_at: Math.floor(Date.now() / 1000),
-            tags: [],
-            content: JSON.stringify({
-              name: this.state.name,
-              about: this.state.about,
-              picture: this.state.avatarUrl,
-              bot: true,
-              pubky: z32Encode(hexToBytes(this.state.pubkey))
+          try {
+            // Generate Ed25519 keypair directly using the global nacl object
+            const privateKeyBytes = hexToBytes(this.state.privateKey)
+            const keyPair = nacl.sign.keyPair.fromSeed(privateKeyBytes)
+
+            const event = {
+              kind: 0,
+              pubkey: this.state.pubkey,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: [],
+              content: JSON.stringify({
+                name: this.state.name,
+                about: this.state.about,
+                picture: this.state.avatarUrl,
+                bot: true,
+                pubky: z32Encode(new Uint8Array(keyPair.publicKey))
+              })
+            }
+
+            // Add logging to debug
+            console.log('Private key:', this.state.privateKey)
+            console.log('KeyPair:', keyPair)
+            console.log('Event:', event)
+
+            const signedEvent = finishEvent(event, this.state.privateKey)
+            const eventHash = getEventHash(signedEvent)
+
+            this.setState({ event, eventHash, signedEvent, publishStatus: '' })
+          } catch (error) {
+            console.error('Error creating event:', error)
+            this.setState({
+              publishStatus: `Error creating event: ${error.message}`
             })
           }
-          const signedEvent = finishEvent(event, this.state.privateKey)
-          const eventHash = getEventHash(signedEvent)
-
-          this.setState({ event, eventHash, signedEvent, publishStatus: '' })
         }
 
         async publishProfile() {
