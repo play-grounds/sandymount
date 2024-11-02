@@ -186,6 +186,79 @@
         nip19
       } from 'https://cdn.jsdelivr.net/npm/nostr-tools@1.17.0/+esm'
 
+      const z32Encode = data => {
+        const alphabet = 'ybndrfg8ejkmcpqxot1uwisza345h769'
+        let bits = 0
+        let value = 0
+        let output = ''
+
+        for (let i = 0; i < data.length; i++) {
+          value = (value << 8) | data[i]
+          bits += 8
+
+          while (bits >= 5) {
+            output += alphabet[(value >>> (bits - 5)) & 31]
+            bits -= 5
+          }
+        }
+
+        if (bits > 0) {
+          output += alphabet[(value << (5 - bits)) & 31]
+        }
+
+        return output
+      }
+
+      const hexToBytes = hex => {
+        const cleanHex = hex.replace(/[^0-9a-fA-F]/g, '')
+        const bytes = new Uint8Array(cleanHex.length / 2)
+        for (let i = 0; i < cleanHex.length; i += 2) {
+          bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16)
+        }
+        return bytes
+      }
+
+      const KeyDisplay = ({ privateKey, nsec, pubkey }) => {
+        const copyToClipboard = text => {
+          navigator.clipboard.writeText(text)
+        }
+
+        return html`
+          <div class="key-display">
+            <p>
+              <strong>Privatekey:</strong>
+              <span class="key-content">${privateKey}</span>
+              <button
+                class="copy-button"
+                onClick=${() => copyToClipboard(privateKey)}
+              >
+                Copy
+              </button>
+            </p>
+            <p>
+              <strong>nsec:</strong>
+              <span class="key-content">${nsec}</span>
+              <button
+                class="copy-button"
+                onClick=${() => copyToClipboard(nsec)}
+              >
+                Copy
+              </button>
+            </p>
+            <p>
+              <strong>Pubkey:</strong>
+              <span class="key-content">${pubkey}</span>
+              <button
+                class="copy-button"
+                onClick=${() => copyToClipboard(pubkey)}
+              >
+                Copy
+              </button>
+            </p>
+          </div>
+        `
+      }
+
       class NostrApp extends Component {
         constructor() {
           super()
@@ -306,7 +379,8 @@
               name: this.state.name,
               about: this.state.about,
               picture: this.state.avatarUrl,
-              bot: true
+              bot: true,
+              pubky: z32Encode(hexToBytes(this.state.pubkey))
             })
           }
           const signedEvent = finishEvent(event, this.state.privateKey)
@@ -373,7 +447,7 @@
 
           return html`
             <div class="container">
-              <h1>Nostr Bot Profile Creator</h1>
+              <h1>Nostr Bot Profile Creatorr</h1>
               <button onClick=${() => this.generatePrivateKey()}>
                 Generate Keys
               </button>
@@ -389,41 +463,11 @@
                 Show Keys
               </button>
               <div class="content">
-                <div class="key-display">
-                  <p>
-                    <strong>Privatekey:</strong>
-                    <span class="key-content">${this.state.privateKey}</span>
-                    <button
-                      class="copy-button"
-                      onClick=${() =>
-                        navigator.clipboard.writeText(this.state.privateKey)}
-                    >
-                      Copy
-                    </button>
-                  </p>
-                  <p>
-                    <strong>nsec:</strong>
-                    <span class="key-content">${this.state.nsec}</span>
-                    <button
-                      class="copy-button"
-                      onClick=${() =>
-                        navigator.clipboard.writeText(this.state.nsec)}
-                    >
-                      Copy
-                    </button>
-                  </p>
-                  <p>
-                    <strong>Pubkey:</strong>
-                    <span class="key-content">${this.state.pubkey}</span>
-                    <button
-                      class="copy-button"
-                      onClick=${() =>
-                        navigator.clipboard.writeText(this.state.pubkey)}
-                    >
-                      Copy
-                    </button>
-                  </p>
-                </div>
+                <${KeyDisplay}
+                  privateKey=${this.state.privateKey}
+                  nsec=${this.state.nsec}
+                  pubkey=${this.state.pubkey}
+                />
               </div>
 
               <input
