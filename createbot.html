@@ -398,11 +398,7 @@
             return
           }
 
-          const relays = [
-            'wss://relay.damus.io',
-            'wss://relay.nostr.band',
-            'wss://nos.lol'
-          ]
+          const relays = ['wss://relay.damus.io', 'wss://relay.nostr.band']
           try {
             const pubs = this.pool.publish(relays, this.state.signedEvent)
             await Promise.all(pubs)
