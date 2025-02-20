@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Model List</title>
+    <script src="https://unpkg.com/preact@10.15.1/dist/preact.umd.js"></script>
+    <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            margin: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        table {
+            width: 90%;
+            margin: 20px auto;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #0073e6;
+            color: white;
+            cursor: pointer;
+            user-select: none;
+        }
+        th:hover {
+            background-color: #005bb5;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>LLM Model List</h1>
+    <div id="app">Loading...</div>
+
+    <script>
+        const { h, render, Component } = preact;
+        const html = htm.bind(h);
+
+        class ModelTable extends Component {
+            constructor() {
+                super();
+                this.state = {
+                    models: [],
+                    sortKey: null,
+                    sortAscending: true
+                };
+            }
+
+            componentDidMount() {
+                fetch("https://berriai.github.io/litellm/model_prices_and_context_window.json")
+                    .then(response => response.json())
+                    .then(data => {
+                        const modelList = Object.entries(data)
+                            .filter(([key, _]) => key !== "sample_spec") // Ignore sample_spec
+                            .map(([name, details]) => ({
+                                name,
+                                ...details,
+                                input_cost_per_million: (details.input_cost_per_token || 0) * 1e6,
+                                output_cost_per_million: (details.output_cost_per_token || 0) * 1e6
+                            }));
+                        this.setState({ models: modelList });
+                    })
+                    .catch(error => console.error("Error fetching models:", error));
+            }
+
+            sortBy(key) {
+                const { sortKey, sortAscending, models } = this.state;
+                const ascending = sortKey === key ? !sortAscending : true;
+
+                const sortedModels = [...models].sort((a, b) => {
+                    const valA = a[key] || 0;
+                    const valB = b[key] || 0;
+                    return ascending ? valA - valB : valB - valA;
+                });
+
+                this.setState({ models: sortedModels, sortKey: key, sortAscending: ascending });
+            }
+
+            render() {
+                return html`
+                    <table>
+                        <thead>
+                            <tr>
+                                <th onclick=${() => this.sortBy("name")}>Model</th>
+                                <th onclick=${() => this.sortBy("max_input_tokens")}>Max Input Tokens</th>
+                                <th onclick=${() => this.sortBy("max_output_tokens")}>Max Output Tokens</th>
+                                <th onclick=${() => this.sortBy("input_cost_per_million")}>Input Cost / Million</th>
+                                <th onclick=${() => this.sortBy("output_cost_per_million")}>Output Cost / Million</th>
+                                <th onclick=${() => this.sortBy("litellm_provider")}>Provider</th>
+                                <th onclick=${() => this.sortBy("mode")}>Mode</th>
+                                <th onclick=${() => this.sortBy("supports_function_calling")}>Supports Functions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${this.state.models.length === 0 
+                                ? html`<tr><td colspan="8">Loading...</td></tr>` 
+                                : this.state.models.map(model => html`
+                                    <tr>
+                                        <td>${model.name}</td>
+                                        <td>${model.max_input_tokens || 'N/A'}</td>
+                                        <td>${model.max_output_tokens || 'N/A'}</td>
+                                        <td>$${model.input_cost_per_million.toFixed(4)}</td>
+                                        <td>$${model.output_cost_per_million.toFixed(4)}</td>
+                                        <td>${model.litellm_provider}</td>
+                                        <td>${model.mode}</td>
+                                        <td>${model.supports_function_calling ? '✅' : '❌'}</td>
+                                    </tr>
+                                `)
+                            }
+                        </tbody>
+                    </table>
+                `;
+            }
+        }
+
+        render(h(ModelTable), document.getElementById("app"));
+    </script>
+</body>
+</html>
