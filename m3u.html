@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M3U Playlist Player</title>
+    <script src="https://unpkg.com/preact@10.15.1/dist/preact.umd.js"></script>
+    <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+    <style>
+      :root {
+        --primary-color: #4f46e5; /* Rich indigo */
+        --hover-color: #4338ca; /* Deeper indigo for hover */
+        --bg-color: #e6f0ff; /* Lighter, more noticeable blue tint */
+        --text-color: #1e293b; /* Slate gray text */
+        --border-color: #e2e8f0; /* Subtle border */
+        --gradient-start: #ffffff; /* Gradient start color */
+        --gradient-end: #e6f0ff; /* Matching end color for gradient */
+      }
+
+      body {
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        margin: 0;
+        display: flex;
+        height: 100vh;
+        background: linear-gradient(
+          135deg,
+          var(--gradient-start),
+          var(--gradient-end)
+        );
+        color: var(--text-color);
+      }
+
+      #app {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        background: white;
+        margin: 20px;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .playlist {
+        width: 30%;
+        min-width: 250px;
+        overflow-y: auto;
+        padding: 20px;
+        border-right: 1px solid var(--border-color);
+        background: white;
+      }
+
+      .media {
+        flex-grow: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+        padding: 20px;
+        min-height: 300px;
+      }
+
+      .playlist-item {
+        padding: 12px 16px;
+        cursor: pointer;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        transition: all 0.2s ease;
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+      }
+
+      .playlist-item:hover {
+        background: linear-gradient(
+          to right,
+          var(--primary-color),
+          var(--hover-color)
+        );
+        color: white;
+        transform: translateX(5px);
+        box-shadow: 0 4px 12px rgba(41, 98, 255, 0.2);
+      }
+
+      video {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      }
+
+      p {
+        color: #666;
+        font-size: 1.1em;
+      }
+
+      /* Custom scrollbar */
+      .playlist::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .playlist::-webkit-scrollbar-track {
+        background: var(--bg-color);
+      }
+
+      .playlist::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+      }
+
+      .playlist::-webkit-scrollbar-thumb:hover {
+        background: var(--primary-color);
+      }
+
+      /* Loading animation */
+      @keyframes pulse {
+        0% {
+          opacity: 0.6;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.6;
+        }
+      }
+
+      .loading {
+        animation: pulse 1.5s infinite;
+        padding: 20px;
+        text-align: center;
+        color: var(--primary-color);
+      }
+
+      /* Add responsive styles */
+      @media (max-width: 768px) {
+        #app {
+          flex-direction: column;
+          margin: 0;
+          border-radius: 0;
+        }
+
+        .playlist {
+          width: 100%;
+          max-height: 30vh;
+          border-right: none;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        .media {
+          height: 70vh;
+        }
+      }
+
+      /* Add new styles for the playlist selector */
+      .playlist-selector {
+        margin-bottom: 16px;
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: white;
+        color: var(--text-color);
+        cursor: pointer;
+      }
+
+      .playlist-selector:hover {
+        border-color: var(--primary-color);
+      }
+
+      .file-input-wrapper {
+        margin-bottom: 16px;
+        width: 100%;
+      }
+
+      .file-input-button {
+        width: 100%;
+        padding: 8px;
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+
+      .file-input-button:hover {
+        background: var(--hover-color);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script type="application/json" id="playlist-data">
+      {
+        "items": [
+          {
+            "title": "Big Buck Bunny (Sample)",
+            "url": "https://www.w3schools.com/html/mov_bbb.mp4"
+          },
+          {
+            "title": "HTML5 Test Video",
+            "url": "https://www.w3schools.com/html/movie.mp4"
+          },
+          {
+            "title": "NASA: Earth from Space",
+            "url": "https://www.nasa.gov/multimedia/hd/HDTVschedule/6389815main_nasa_tv_hd720p.mp4"
+          },
+          {
+            "title": "Bach - Air on G String",
+            "url": "https://www.kozco.com/tech/Bach-AirOnGString.mp3"
+          },
+          {
+            "title": "Mozart - Eine Kleine Nachtmusik",
+            "url": "https://www.kozco.com/tech/Mozart-EineKleineNachtmusik.mp3"
+          },
+          {
+            "title": "Moonlight Sonata (First Movement)",
+            "url": "https://www.kozco.com/tech/Beethoven-Moonlight.mp3"
+          }
+        ]
+      }
+    </script>
+
+    <script>
+      const { h, render, Component } = preact
+      const html = htm.bind(h)
+
+      class M3UPlayer extends Component {
+        constructor(props) {
+          super(props)
+          this.state = {
+            playlist: [],
+            currentMedia: null,
+            savedPlaylists: [],
+            selectedPlaylist: null,
+            directoryHandle: null,
+            fileHandles: new Map()
+          }
+        }
+
+        componentDidMount() {
+          // Load saved playlists from localStorage
+          this.loadSavedPlaylists()
+
+          const urlParams = new URLSearchParams(window.location.search)
+          const playlistURL = urlParams.get('playlist')
+
+          if (playlistURL) {
+            this.fetchPlaylist(playlistURL)
+          } else {
+            this.loadFallbackPlaylist()
+          }
+        }
+
+        loadSavedPlaylists() {
+          // Get all keys from localStorage that end with .m3u
+          const savedPlaylists = Object.keys(localStorage).filter(key =>
+            key.endsWith('.m3u')
+          )
+          this.setState({ savedPlaylists })
+        }
+
+        handlePlaylistSelect(e) {
+          const playlistName = e.target.value
+          if (!playlistName) return
+
+          const m3uContent = localStorage.getItem(playlistName)
+          if (m3uContent) {
+            this.setState({ selectedPlaylist: playlistName })
+            this.parseM3U(m3uContent)
+          }
+        }
+
+        fetchPlaylist(url) {
+          console.log('Fetching playlist from:', url) // Debug log
+          fetch(url)
+            .then(res => {
+              console.log('Fetch response status:', res.status) // Debug log
+              return res.text()
+            })
+            .then(data => {
+              console.log(
+                'Received playlist data:',
+                data.substring(0, 200) + '...'
+              ) // Debug log preview
+              this.parseM3U(data)
+            })
+            .catch(err => {
+              console.error('Error loading playlist:', err)
+              this.loadFallbackPlaylist() // Fallback on error
+            })
+        }
+
+        loadFallbackPlaylist() {
+          try {
+            const fallbackData = JSON.parse(
+              document.getElementById('playlist-data').textContent
+            )
+            this.setState({ playlist: fallbackData.items }, () => {
+              if (this.state.playlist.length > 0) {
+                this.playMedia(this.state.playlist[0])
+              }
+            })
+          } catch (err) {
+            console.error('Error loading fallback playlist:', err)
+          }
+        }
+
+        parseM3U(m3uText) {
+          console.log('Parsing M3U content...')
+          const lines = m3uText
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line)
+          console.log('Found lines:', lines.length)
+          const playlist = []
+          let currentTitle = null
+
+          // Get the base URL from the query string if it exists
+          const urlParams = new URLSearchParams(window.location.search)
+          const playlistURL = urlParams.get('playlist')
+          const baseURL = playlistURL
+            ? new URL(playlistURL, window.location.href).href.replace(
+                /[^/]*$/,
+                ''
+              )
+            : ''
+
+          const getFilenameFromUrl = url => {
+            const cleanUrl = url.split('?')[0].split('#')[0]
+            const filename = cleanUrl.split('/').pop()
+            return filename ? filename.substring(0, 30) : 'Unknown'
+          }
+
+          for (let i = 0; i < lines.length; i++) {
+            console.log('Processing line:', lines[i])
+            if (lines[i].startsWith('#EXTINF:')) {
+              currentTitle = lines[i].split(',')[1]
+            } else if (!lines[i].startsWith('#')) {
+              const title = currentTitle || getFilenameFromUrl(lines[i])
+              const url = lines[i]
+
+              if (url.startsWith('file://') || !url.match(/^[a-zA-Z]+:\/\//)) {
+                if (baseURL && baseURL.startsWith('http')) {
+                  // For HTTP playlists, treat relative paths as relative to playlist URL
+                  playlist.push({
+                    title: title,
+                    url: new URL(url, baseURL).href,
+                    isLocal: false
+                  })
+                } else {
+                  // For local files, keep the original behavior
+                  playlist.push({
+                    title: title,
+                    url: url,
+                    isLocal: true,
+                    localPath: url.replace('file://', '')
+                  })
+                }
+              } else {
+                // Absolute URLs remain unchanged
+                playlist.push({
+                  title: title,
+                  url: url,
+                  isLocal: false
+                })
+              }
+              currentTitle = null
+            }
+          }
+
+          console.log('Parsed playlist:', playlist)
+          this.setState({ playlist }, () => {
+            if (playlist.length > 0) {
+              this.playMedia(playlist[0])
+            }
+          })
+        }
+
+        async selectDirectory() {
+          try {
+            const dirHandle = await window.showDirectoryPicker()
+            this.setState({ directoryHandle: dirHandle })
+
+            // Store handles for all media files in the directory
+            const fileHandles = new Map()
+            for await (const entry of dirHandle.values()) {
+              if (
+                entry.kind === 'file' &&
+                entry.name.match(/\.(mp4|webm|mkv|avi|mp3|wav|ogg|m4a)$/i)
+              ) {
+                fileHandles.set(entry.name, entry)
+              }
+            }
+            this.setState({ fileHandles })
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.error('Error accessing directory:', error)
+            }
+          }
+        }
+
+        async playMedia(item) {
+          console.log('playMedia called with item:', item)
+
+          if (item instanceof File) {
+            const blobUrl = URL.createObjectURL(item)
+            this.setState({ currentMedia: blobUrl })
+            return
+          }
+
+          if (item.isLocal) {
+            try {
+              // If we don't have a directory handle yet, show a message
+              if (!this.state.directoryHandle) {
+                console.log('Please select a media directory first')
+                return
+              }
+
+              const filename = item.localPath.split('/').pop()
+              const fileHandle = this.state.fileHandles.get(filename)
+
+              if (fileHandle) {
+                const file = await fileHandle.getFile()
+                const blobUrl = URL.createObjectURL(file)
+                this.setState({ currentMedia: blobUrl })
+              } else {
+                console.log(
+                  'File not found in selected directory. Please select the correct directory.'
+                )
+              }
+            } catch (error) {
+              console.error('Error accessing local file:', error)
+            }
+            return
+          }
+
+          // Handle remote URLs
+          try {
+            const fullUrl = new URL(item.url, window.location.href).href
+            this.setState({ currentMedia: fullUrl })
+          } catch (error) {
+            console.error('Invalid URL:', error)
+          }
+        }
+
+        handleFileSelect(e) {
+          const file = e.target.files[0]
+          if (!file) return
+
+          if (file.name.endsWith('.m3u') || file.name.endsWith('.m3u8')) {
+            // Handle M3U playlist file
+            const reader = new FileReader()
+            reader.onload = e => {
+              const content = e.target.result
+              const filename = file.name
+              localStorage.setItem(filename, content)
+              this.loadSavedPlaylists()
+              this.setState({ selectedPlaylist: filename })
+              this.parseM3U(content)
+            }
+            reader.readAsText(file)
+          } else {
+            // Handle media file
+            const mediaUrl = URL.createObjectURL(file)
+            this.setState({
+              playlist: [
+                ...this.state.playlist,
+                {
+                  title: file.name,
+                  url: file, // Store the file object directly
+                  isLocal: true
+                }
+              ]
+            })
+          }
+        }
+
+        render() {
+          console.log('Rendering with playlist:', this.state.playlist)
+          return html`
+            <div id="app">
+              <div class="playlist">
+                <div class="file-input-wrapper">
+                  <button
+                    class="file-input-button"
+                    onClick=${() => this.selectDirectory()}
+                  >
+                    Select Media Directory
+                  </button>
+                  <input
+                    type="file"
+                    accept=".m3u,.m3u8,video/*,audio/*"
+                    id="file-input"
+                    style="display: none"
+                    onChange=${e => this.handleFileSelect(e)}
+                  />
+                  <button
+                    class="file-input-button"
+                    onClick=${() =>
+                      document.getElementById('file-input').click()}
+                  >
+                    Open M3U or Media File
+                  </button>
+                </div>
+
+                <select
+                  class="playlist-selector"
+                  value=${this.state.selectedPlaylist}
+                  onChange=${e => this.handlePlaylistSelect(e)}
+                >
+                  <option value="">Select a saved playlist</option>
+                  ${Array.isArray(this.state.savedPlaylists)
+                    ? this.state.savedPlaylists.map(
+                        name => html`<option value=${name}>${name}</option>`
+                      )
+                    : null}
+                </select>
+
+                ${!Array.isArray(this.state.playlist) ||
+                this.state.playlist.length === 0
+                  ? html`<p class="loading">Loading playlist...</p>`
+                  : Array.isArray(this.state.playlist) &&
+                    this.state.playlist.map(
+                      item => html`
+                        <div
+                          class="playlist-item"
+                          onclick=${() => {
+                            console.log('Playlist item clicked:', item)
+                            this.playMedia(item) // Pass the entire item
+                          }}
+                          title="${item.title}${item.isLocal
+                            ? ' (Local File)'
+                            : ''}"
+                        >
+                          ${item.title}${item.isLocal ? ' 📁' : ''}
+                        </div>
+                      `
+                    )}
+              </div>
+              <div class="media">
+                ${this.state.currentMedia
+                  ? html`<video
+                      src="${this.state.currentMedia}"
+                      controls
+                      autoplay
+                      controlsList="nodownload"
+                      preload="auto"
+                      playsinline
+                      style="width: 100%; height: 100%; object-fit: contain;"
+                      onError=${e => console.error('Video error:', e)}
+                    ></video>`
+                  : html`<p>Select a media file to play</p>`}
+              </div>
+            </div>
+          `
+        }
+      }
+
+      render(h(M3UPlayer, null), document.getElementById('app'))
+    </script>
+  </body>
+</html>
