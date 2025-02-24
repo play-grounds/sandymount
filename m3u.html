@@ -270,9 +270,20 @@
           const playlistURL = urlParams.get('playlist')
 
           if (playlistURL) {
-            this.fetchPlaylist(playlistURL)
+            this.fetchPlaylist(playlistURL).then(() => {
+              // Play first item after playlist is loaded
+              if (this.state.playlist && this.state.playlist.length > 0) {
+                this.playMedia(this.state.playlist[0], 0)
+              }
+            })
           } else {
             this.loadFallbackPlaylist()
+            // Play first item from fallback playlist
+            setTimeout(() => {
+              if (this.state.playlist && this.state.playlist.length > 0) {
+                this.playMedia(this.state.playlist[0], 0)
+              }
+            }, 0)
           }
         }
 
@@ -296,22 +307,22 @@
         }
 
         fetchPlaylist(url) {
-          console.log('Fetching playlist from:', url) // Debug log
-          fetch(url)
+          console.log('Fetching playlist from:', url)
+          return fetch(url)
             .then(res => {
-              console.log('Fetch response status:', res.status) // Debug log
+              console.log('Fetch response status:', res.status)
               return res.text()
             })
             .then(data => {
               console.log(
                 'Received playlist data:',
                 data.substring(0, 200) + '...'
-              ) // Debug log preview
+              )
               this.parseM3U(data)
             })
             .catch(err => {
               console.error('Error loading playlist:', err)
-              this.loadFallbackPlaylist() // Fallback on error
+              this.loadFallbackPlaylist()
             })
         }
 
@@ -469,7 +480,14 @@
             }
           }
 
-          this.setState({ currentMedia: currentUrl })
+          this.setState({ currentMedia: currentUrl }, () => {
+            // After the state is updated and video source is set, play the video
+            if (this.videoRef) {
+              this.videoRef
+                .play()
+                .catch(e => console.error('Playback failed:', e))
+            }
+          })
         }
 
         handleFileSelect(e) {
