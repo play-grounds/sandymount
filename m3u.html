@@ -68,6 +68,16 @@
         transition: all 0.2s ease;
         background: var(--bg-color);
         border: 1px solid var(--border-color);
+        position: relative;
+      }
+
+      .start-time {
+        position: absolute;
+        bottom: 4px;
+        right: 8px;
+        font-size: 0.75em;
+        color: #666;
+        opacity: 0.7;
       }
 
       .playlist-item:hover {
@@ -748,6 +758,11 @@
                             : ''}"
                         >
                           ${item.title}${item.isLocal ? ' 📁' : ''}
+                          ${item.startTime
+                            ? html`<span class="start-time"
+                                >${item.startTime}s</span
+                              >`
+                            : ''}
                         </div>
                       `
                     )}
