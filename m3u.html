@@ -188,6 +188,22 @@
       .file-input-button:hover {
         background: var(--hover-color);
       }
+
+      .play-all-button {
+        width: 100%;
+        padding: 8px;
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s ease;
+        margin-bottom: 16px;
+      }
+
+      .play-all-button:hover {
+        background: var(--hover-color);
+      }
     </style>
   </head>
   <body>
@@ -234,11 +250,16 @@
           this.state = {
             playlist: [],
             currentMedia: null,
+            nextMedia: null,
             savedPlaylists: [],
             selectedPlaylist: null,
             directoryHandle: null,
-            fileHandles: new Map()
+            fileHandles: new Map(),
+            currentIndex: 0,
+            isPlayingAll: false
           }
+          this.videoRef = null
+          this.nextVideoRef = null
         }
 
         componentDidMount() {
@@ -299,11 +320,7 @@
             const fallbackData = JSON.parse(
               document.getElementById('playlist-data').textContent
             )
-            this.setState({ playlist: fallbackData.items }, () => {
-              if (this.state.playlist.length > 0) {
-                this.playMedia(this.state.playlist[0])
-              }
-            })
+            this.setState({ playlist: fallbackData.items })
           } catch (err) {
             console.error('Error loading fallback playlist:', err)
           }
@@ -373,11 +390,7 @@
           }
 
           console.log('Parsed playlist:', playlist)
-          this.setState({ playlist }, () => {
-            if (playlist.length > 0) {
-              this.playMedia(playlist[0])
-            }
-          })
+          this.setState({ playlist })
         }
 
         async selectDirectory() {
@@ -403,48 +416,60 @@
           }
         }
 
-        async playMedia(item) {
+        async playMedia(item, index) {
           console.log('playMedia called with item:', item)
+          const shouldAutoplay = this.state.isPlayingAll
 
-          if (item instanceof File) {
-            const blobUrl = URL.createObjectURL(item)
-            this.setState({ currentMedia: blobUrl })
-            return
-          }
+          // Prepare next media for preloading if playing all
+          if (
+            this.state.isPlayingAll &&
+            index < this.state.playlist.length - 1
+          ) {
+            const nextItem = this.state.playlist[index + 1]
+            let nextUrl = null
 
-          if (item.isLocal) {
-            try {
-              // If we don't have a directory handle yet, show a message
-              if (!this.state.directoryHandle) {
-                console.log('Please select a media directory first')
-                return
-              }
-
-              const filename = item.localPath.split('/').pop()
+            if (nextItem instanceof File) {
+              nextUrl = URL.createObjectURL(nextItem)
+            } else if (nextItem.isLocal && this.state.directoryHandle) {
+              const filename = nextItem.localPath.split('/').pop()
               const fileHandle = this.state.fileHandles.get(filename)
-
               if (fileHandle) {
                 const file = await fileHandle.getFile()
-                const blobUrl = URL.createObjectURL(file)
-                this.setState({ currentMedia: blobUrl })
-              } else {
-                console.log(
-                  'File not found in selected directory. Please select the correct directory.'
-                )
+                nextUrl = URL.createObjectURL(file)
               }
-            } catch (error) {
-              console.error('Error accessing local file:', error)
+            } else {
+              try {
+                nextUrl = new URL(nextItem.url, window.location.href).href
+              } catch (error) {
+                console.error('Invalid next URL:', error)
+              }
             }
-            return
+
+            this.setState({ nextMedia: nextUrl })
+          } else {
+            this.setState({ nextMedia: null })
           }
 
-          // Handle remote URLs
-          try {
-            const fullUrl = new URL(item.url, window.location.href).href
-            this.setState({ currentMedia: fullUrl })
-          } catch (error) {
-            console.error('Invalid URL:', error)
+          // Set current media
+          let currentUrl = null
+          if (item instanceof File) {
+            currentUrl = URL.createObjectURL(item)
+          } else if (item.isLocal && this.state.directoryHandle) {
+            const filename = item.localPath.split('/').pop()
+            const fileHandle = this.state.fileHandles.get(filename)
+            if (fileHandle) {
+              const file = await fileHandle.getFile()
+              currentUrl = URL.createObjectURL(file)
+            }
+          } else {
+            try {
+              currentUrl = new URL(item.url, window.location.href).href
+            } catch (error) {
+              console.error('Invalid URL:', error)
+            }
           }
+
+          this.setState({ currentMedia: currentUrl })
         }
 
         handleFileSelect(e) {
@@ -476,6 +501,44 @@
                 }
               ]
             })
+          }
+        }
+
+        playAll() {
+          if (this.state.playlist.length > 0) {
+            this.setState({ isPlayingAll: true, currentIndex: 0 }, () => {
+              const firstItem = this.state.playlist[0]
+              this.playMedia(firstItem, 0).then(() => {
+                // Force play the video after it's loaded
+                if (this.videoRef) {
+                  this.videoRef
+                    .play()
+                    .catch(e => console.error('Autoplay failed:', e))
+                }
+              })
+            })
+          }
+        }
+
+        handleMediaEnd = () => {
+          if (
+            this.state.isPlayingAll &&
+            this.state.currentIndex < this.state.playlist.length - 1
+          ) {
+            const nextIndex = this.state.currentIndex + 1
+            this.setState({ currentIndex: nextIndex }, () => {
+              const nextItem = this.state.playlist[nextIndex]
+              this.playMedia(nextItem, nextIndex).then(() => {
+                // Force play the next video after it's loaded
+                if (this.videoRef) {
+                  this.videoRef
+                    .play()
+                    .catch(e => console.error('Autoplay failed:', e))
+                }
+              })
+            })
+          } else {
+            this.setState({ isPlayingAll: false, currentIndex: 0 })
           }
         }
 
@@ -520,17 +583,34 @@
                     : null}
                 </select>
 
+                ${this.state.playlist.length > 0
+                  ? html`
+                      <button
+                        class="play-all-button"
+                        onClick=${() => this.playAll()}
+                      >
+                        ${this.state.isPlayingAll
+                          ? 'Playing All...'
+                          : 'Play All'}
+                      </button>
+                    `
+                  : null}
                 ${!Array.isArray(this.state.playlist) ||
                 this.state.playlist.length === 0
                   ? html`<p class="loading">Loading playlist...</p>`
                   : Array.isArray(this.state.playlist) &&
                     this.state.playlist.map(
-                      item => html`
+                      (item, index) => html`
                         <div
                           class="playlist-item"
                           onclick=${() => {
                             console.log('Playlist item clicked:', item)
-                            this.playMedia(item) // Pass the entire item
+                            this.setState(
+                              { currentIndex: index, isPlayingAll: false },
+                              () => {
+                                this.playMedia(item, index)
+                              }
+                            )
                           }}
                           title="${item.title}${item.isLocal
                             ? ' (Local File)'
@@ -543,16 +623,33 @@
               </div>
               <div class="media">
                 ${this.state.currentMedia
-                  ? html`<video
-                      src="${this.state.currentMedia}"
-                      controls
-                      autoplay
-                      controlsList="nodownload"
-                      preload="auto"
-                      playsinline
-                      style="width: 100%; height: 100%; object-fit: contain;"
-                      onError=${e => console.error('Video error:', e)}
-                    ></video>`
+                  ? html`
+                      <div>
+                        <video
+                          ref=${ref => (this.videoRef = ref)}
+                          src="${this.state.currentMedia}"
+                          controls
+                          autoplay=${this.state.isPlayingAll}
+                          muted=${false}
+                          controlsList="nodownload"
+                          preload="auto"
+                          playsinline
+                          style="width: 100%; height: 100%; object-fit: contain;"
+                          onError=${e => console.error('Video error:', e)}
+                          onEnded=${this.handleMediaEnd}
+                        ></video>
+                        ${this.state.nextMedia
+                          ? html`
+                              <video
+                                ref=${ref => (this.nextVideoRef = ref)}
+                                src="${this.state.nextMedia}"
+                                preload="auto"
+                                style="display: none;"
+                              ></video>
+                            `
+                          : null}
+                      </div>
+                    `
                   : html`<p>Select a media file to play</p>`}
               </div>
             </div>
