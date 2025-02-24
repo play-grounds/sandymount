@@ -69,6 +69,8 @@
         background: var(--bg-color);
         border: 1px solid var(--border-color);
         position: relative;
+        user-select: none; /* Prevent text selection while dragging */
+        cursor: grab;
       }
 
       .start-time {
@@ -256,6 +258,18 @@
         white-space: pre-wrap;
         font-family: monospace;
         margin-top: 20px;
+      }
+
+      .playlist-item.dragging {
+        opacity: 0.5;
+        background: var(--primary-color);
+        color: white;
+        cursor: grabbing;
+      }
+
+      .playlist-item.drag-over {
+        border: 2px dashed var(--primary-color);
+        padding: 11px 15px; /* Adjust padding to prevent size jump */
       }
     </style>
   </head>
@@ -655,6 +669,70 @@
         }
 
         /**
+         * Handle drag start
+         * @param {Event} e - Drag event
+         * @param {number} index - Index of the dragged item
+         */
+        handleDragStart(e, index) {
+          e.dataTransfer.setData('text/plain', index)
+          e.target.classList.add('dragging')
+        }
+
+        /**
+         * Handle drag over
+         * @param {Event} e - Drag event
+         */
+        handleDragOver(e) {
+          e.preventDefault()
+          const item = e.target.closest('.playlist-item')
+          if (item) {
+            item.classList.add('drag-over')
+          }
+        }
+
+        /**
+         * Handle drag leave
+         * @param {Event} e - Drag event
+         */
+        handleDragLeave(e) {
+          const item = e.target.closest('.playlist-item')
+          if (item) {
+            item.classList.remove('drag-over')
+          }
+        }
+
+        /**
+         * Handle drop
+         * @param {Event} e - Drop event
+         * @param {number} newIndex - Index to insert the dropped item
+         */
+        handleDrop(e, newIndex) {
+          e.preventDefault()
+          const oldIndex = parseInt(e.dataTransfer.getData('text/plain'))
+          const items = [...this.state.playlist]
+          const [reorderedItem] = items.splice(oldIndex, 1)
+          items.splice(newIndex, 0, reorderedItem)
+
+          // Remove visual feedback
+          document.querySelectorAll('.playlist-item').forEach(item => {
+            item.classList.remove('dragging', 'drag-over')
+          })
+
+          this.setState({ playlist: items })
+        }
+
+        /**
+         * Handle drag end
+         * @param {Event} e - Drag end event
+         */
+        handleDragEnd(e) {
+          // Remove visual feedback
+          document.querySelectorAll('.playlist-item').forEach(item => {
+            item.classList.remove('dragging', 'drag-over')
+          })
+        }
+
+        /**
          * Render component
          * @returns {VNode} Virtual DOM node
          */
@@ -753,6 +831,12 @@
                               }
                             )
                           }}
+                          draggable="true"
+                          ondragstart=${e => this.handleDragStart(e, index)}
+                          ondragover=${e => this.handleDragOver(e)}
+                          ondragleave=${e => this.handleDragLeave(e)}
+                          ondrop=${e => this.handleDrop(e, index)}
+                          ondragend=${e => this.handleDragEnd(e)}
                           title="${item.title}${item.isLocal
                             ? ' (Local File)'
                             : ''}"
