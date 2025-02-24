@@ -209,35 +209,18 @@
   <body>
     <div id="app"></div>
 
-    <script type="application/json" id="playlist-data">
-      {
-        "items": [
-          {
-            "title": "Big Buck Bunny (Sample)",
-            "url": "https://www.w3schools.com/html/mov_bbb.mp4"
-          },
-          {
-            "title": "HTML5 Test Video",
-            "url": "https://www.w3schools.com/html/movie.mp4"
-          },
-          {
-            "title": "NASA: Earth from Space",
-            "url": "https://www.nasa.gov/multimedia/hd/HDTVschedule/6389815main_nasa_tv_hd720p.mp4"
-          },
-          {
-            "title": "Bach - Air on G String",
-            "url": "https://www.kozco.com/tech/Bach-AirOnGString.mp3"
-          },
-          {
-            "title": "Mozart - Eine Kleine Nachtmusik",
-            "url": "https://www.kozco.com/tech/Mozart-EineKleineNachtmusik.mp3"
-          },
-          {
-            "title": "Moonlight Sonata (First Movement)",
-            "url": "https://www.kozco.com/tech/Beethoven-Moonlight.mp3"
-          }
-        ]
-      }
+    <script type="text/plain" id="playlist-data">
+      #EXTM3U
+      #EXTINF:-1,Big Buck Bunny (Sample)
+      https://www.w3schools.com/html/mov_bbb.mp4
+      #EXTINF:-1,HTML5 Test Video
+      https://www.w3schools.com/html/movie.mp4
+      #EXTINF:-1,Elephants Dream (Sample)
+      https://archive.org/download/ElephantsDream/ed_hd.mp4
+      #EXTINF:-1,Sintel Trailer
+      https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
+      #EXTINF:-1,Test Pattern Audio
+      https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3
     </script>
 
     <script>
@@ -245,6 +228,11 @@
       const html = htm.bind(h)
 
       class M3UPlayer extends Component {
+        /**
+         * Initialize component state and refs
+         * @constructor
+         * @param {Object} props - Component properties
+         */
         constructor(props) {
           super(props)
           this.state = {
@@ -262,6 +250,10 @@
           this.nextVideoRef = null
         }
 
+        /**
+         * Load playlist data after component mounts
+         * Checks URL parameters for playlist or loads fallback
+         */
         componentDidMount() {
           // Load saved playlists from localStorage
           this.loadSavedPlaylists()
@@ -287,6 +279,10 @@
           }
         }
 
+        /**
+         * Load playlists saved in localStorage
+         * Filters for files ending in .m3u
+         */
         loadSavedPlaylists() {
           // Get all keys from localStorage that end with .m3u
           const savedPlaylists = Object.keys(localStorage).filter(key =>
@@ -295,6 +291,10 @@
           this.setState({ savedPlaylists })
         }
 
+        /**
+         * Handle playlist selection from dropdown
+         * @param {Event} e - Selection event
+         */
         handlePlaylistSelect(e) {
           const playlistName = e.target.value
           if (!playlistName) return
@@ -306,6 +306,11 @@
           }
         }
 
+        /**
+         * Fetch playlist from URL
+         * @param {string} url - URL of playlist to fetch
+         * @returns {Promise} - Resolves when playlist is loaded
+         */
         fetchPlaylist(url) {
           console.log('Fetching playlist from:', url)
           return fetch(url)
@@ -326,17 +331,23 @@
             })
         }
 
+        /**
+         * Load fallback playlist from embedded data
+         */
         loadFallbackPlaylist() {
           try {
-            const fallbackData = JSON.parse(
+            const fallbackData =
               document.getElementById('playlist-data').textContent
-            )
-            this.setState({ playlist: fallbackData.items })
+            this.parseM3U(fallbackData)
           } catch (err) {
             console.error('Error loading fallback playlist:', err)
           }
         }
 
+        /**
+         * Parse M3U format playlist text into structured data
+         * @param {string} m3uText - Raw M3U playlist content
+         */
         parseM3U(m3uText) {
           console.log('Parsing M3U content...')
           const lines = m3uText
@@ -404,6 +415,10 @@
           this.setState({ playlist })
         }
 
+        /**
+         * Open file system dialog to select media directory
+         * @async
+         */
         async selectDirectory() {
           try {
             const dirHandle = await window.showDirectoryPicker()
@@ -427,6 +442,12 @@
           }
         }
 
+        /**
+         * Play selected media item
+         * @async
+         * @param {Object} item - Media item to play
+         * @param {number} index - Index in playlist
+         */
         async playMedia(item, index) {
           console.log('playMedia called with item:', item)
           const shouldAutoplay = this.state.isPlayingAll
@@ -490,6 +511,10 @@
           })
         }
 
+        /**
+         * Handle file selection from file input
+         * @param {Event} e - File input change event
+         */
         handleFileSelect(e) {
           const file = e.target.files[0]
           if (!file) return
@@ -522,6 +547,9 @@
           }
         }
 
+        /**
+         * Start playing all items in playlist sequentially
+         */
         playAll() {
           if (this.state.playlist.length > 0) {
             this.setState({ isPlayingAll: true, currentIndex: 0 }, () => {
@@ -538,6 +566,10 @@
           }
         }
 
+        /**
+         * Handle media playback end
+         * Advances to next track if playing all
+         */
         handleMediaEnd = () => {
           if (
             this.state.isPlayingAll &&
@@ -560,6 +592,10 @@
           }
         }
 
+        /**
+         * Render component
+         * @returns {VNode} Virtual DOM node
+         */
         render() {
           console.log('Rendering with playlist:', this.state.playlist)
           return html`
