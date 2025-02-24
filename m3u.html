@@ -204,6 +204,49 @@
       .play-all-button:hover {
         background: var(--hover-color);
       }
+
+      /* Add modal styles */
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+      }
+
+      .modal-content {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        max-width: 80%;
+        max-height: 80vh;
+        overflow-y: auto;
+        position: relative;
+      }
+
+      .modal-close {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+      }
+
+      .modal-text {
+        white-space: pre-wrap;
+        font-family: monospace;
+        margin-top: 20px;
+      }
     </style>
   </head>
   <body>
@@ -214,6 +257,7 @@
       #EXTINF:-1,Big Buck Bunny (Sample)
       https://www.w3schools.com/html/mov_bbb.mp4
       #EXTINF:-1,HTML5 Test Video
+      #EXTVLCOPT:start-time=6
       https://www.w3schools.com/html/movie.mp4
       #EXTINF:-1,Elephants Dream (Sample)
       https://archive.org/download/ElephantsDream/ed_hd.mp4
@@ -244,7 +288,9 @@
             directoryHandle: null,
             fileHandles: new Map(),
             currentIndex: 0,
-            isPlayingAll: false
+            isPlayingAll: false,
+            showModal: false,
+            modalContent: ''
           }
           this.videoRef = null
           this.nextVideoRef = null
@@ -357,6 +403,7 @@
           console.log('Found lines:', lines.length)
           const playlist = []
           let currentTitle = null
+          let startTime = null
 
           // Get the base URL from the query string if it exists
           const urlParams = new URLSearchParams(window.location.search)
@@ -378,36 +425,39 @@
             console.log('Processing line:', lines[i])
             if (lines[i].startsWith('#EXTINF:')) {
               currentTitle = lines[i].split(',')[1]
+            } else if (lines[i].startsWith('#EXTVLCOPT:start-time=')) {
+              startTime = parseFloat(lines[i].split('=')[1])
             } else if (!lines[i].startsWith('#')) {
               const title = currentTitle || getFilenameFromUrl(lines[i])
               const url = lines[i]
 
               if (url.startsWith('file://') || !url.match(/^[a-zA-Z]+:\/\//)) {
                 if (baseURL && baseURL.startsWith('http')) {
-                  // For HTTP playlists, treat relative paths as relative to playlist URL
                   playlist.push({
                     title: title,
                     url: new URL(url, baseURL).href,
-                    isLocal: false
+                    isLocal: false,
+                    startTime: startTime
                   })
                 } else {
-                  // For local files, keep the original behavior
                   playlist.push({
                     title: title,
                     url: url,
                     isLocal: true,
-                    localPath: url.replace('file://', '')
+                    localPath: url.replace('file://', ''),
+                    startTime: startTime
                   })
                 }
               } else {
-                // Absolute URLs remain unchanged
                 playlist.push({
                   title: title,
                   url: url,
-                  isLocal: false
+                  isLocal: false,
+                  startTime: startTime
                 })
               }
               currentTitle = null
+              startTime = null
             }
           }
 
@@ -460,8 +510,8 @@
             const nextItem = this.state.playlist[index + 1]
             let nextUrl = null
 
-            if (nextItem instanceof File) {
-              nextUrl = URL.createObjectURL(nextItem)
+            if (nextItem.url instanceof File) {
+              nextUrl = URL.createObjectURL(nextItem.url)
             } else if (nextItem.isLocal && this.state.directoryHandle) {
               const filename = nextItem.localPath.split('/').pop()
               const fileHandle = this.state.fileHandles.get(filename)
@@ -484,8 +534,8 @@
 
           // Set current media
           let currentUrl = null
-          if (item instanceof File) {
-            currentUrl = URL.createObjectURL(item)
+          if (item.url instanceof File) {
+            currentUrl = URL.createObjectURL(item.url)
           } else if (item.isLocal && this.state.directoryHandle) {
             const filename = item.localPath.split('/').pop()
             const fileHandle = this.state.fileHandles.get(filename)
@@ -502,8 +552,10 @@
           }
 
           this.setState({ currentMedia: currentUrl }, () => {
-            // After the state is updated and video source is set, play the video
             if (this.videoRef) {
+              if (item.startTime != null) {
+                this.videoRef.currentTime = item.startTime
+              }
               this.videoRef
                 .play()
                 .catch(e => console.error('Playback failed:', e))
@@ -622,6 +674,31 @@
                   >
                     Open M3U or Media File
                   </button>
+                  ${(() => {
+                    const urlParams = new URLSearchParams(
+                      window.location.search
+                    )
+                    const playlistURL = urlParams.get('playlist')
+                    return playlistURL
+                      ? html`
+                          <button
+                            class="file-input-button"
+                            onClick=${() => {
+                              fetch(playlistURL)
+                                .then(res => res.text())
+                                .then(content => {
+                                  this.setState({
+                                    showModal: true,
+                                    modalContent: content
+                                  })
+                                })
+                            }}
+                          >
+                            Show Playlist Content
+                          </button>
+                        `
+                      : null
+                  })()}
                 </div>
 
                 <select
@@ -706,6 +783,26 @@
                     `
                   : html`<p>Select a media file to play</p>`}
               </div>
+              ${this.state.showModal
+                ? html`
+                    <div class="modal-overlay">
+                      <div class="modal-content">
+                        <button
+                          class="modal-close"
+                          onClick=${() =>
+                            this.setState({
+                              showModal: false,
+                              modalContent: ''
+                            })}
+                        >
+                          ×
+                        </button>
+                        <h3>Playlist Content</h3>
+                        <pre class="modal-text">${this.state.modalContent}</pre>
+                      </div>
+                    </div>
+                  `
+                : null}
             </div>
           `
         }
